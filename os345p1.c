@@ -50,10 +50,20 @@ Command* newCommand(char*, char*, int (*func)(int, char**), char*);
 
 void mySigIntHandler()
 {
-	printf("Hellomynameisinigomontoyayoukilledmyfatherpreparetodie");
+	printf("SIG INT");
 }
 
-// ***********************************************************************
+void mySigContHandler()
+{
+    printf("SIG CONT");
+}
+
+void mySigStopHandler()
+{
+    printf("SIG stop");
+}
+
+/* *********************************************************************** */
 // myShell - command line interpreter
 //
 // Project 1 - implement a Shell (CLI) that:
@@ -75,9 +85,12 @@ int P1_shellTask(int argc, char* argv[])
 	// initialize shell commands
 	commands = P1_init();					// init shell commands
 
-	sigAction(mySigIntHandler, mySIGINT);
+	sigAction(mySigContHandler, mySIGCONT);
+    sigAction(mySigIntHandler, mySIGINT);    
+    sigAction(mySigStopHandler, mySIGTSTP);
+    
 
-
+    
 	while (1)
 	{
 		// output prompt
@@ -86,6 +99,7 @@ int P1_shellTask(int argc, char* argv[])
 
 		SEM_WAIT(inBufferReady);			// wait for input buffer semaphore
 		if (!inBuffer[0]) continue;		// ignore blank lines
+        
 		// printf("%s", inBuffer);
 
 		SWAP										// do context switch
@@ -119,12 +133,12 @@ int P1_shellTask(int argc, char* argv[])
 			{
 				// command found, make implicit call thru function pointer
 				int retValue = (*commands[i]->func)(newArgc, newArgv);
-				if (retValue) printf("\nCommand Error %d", retValue);
+				if (retValue) printf("\nCommand Error \'%d\'", retValue);
 				found = TRUE;
 				break;
 			}
 		}
-		if (!found)	printf("\nInvalid command!");
+		if (!found)	printf("\nInvalid command: \'%s\'",newArgv[0]);
 
 		// ?? free up any malloc'd argv parameters
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
@@ -224,6 +238,11 @@ int P1_help(int argc, char* argv[])
 	return 0;
 } // end P1_help
 
+int clear_screen(int argc, char* argv[]){
+    printf("\033[2J\033[1;1H");
+    return 0;
+}
+
 
 // ***********************************************************************
 // ***********************************************************************
@@ -261,6 +280,7 @@ Command** P1_init()
 	commands[i++] = newCommand("quit", "q", P1_quit, "Quit");
 	commands[i++] = newCommand("kill", "kt", P2_killTask, "Kill task");
 	commands[i++] = newCommand("reset", "rs", P2_reset, "Reset system");
+    commands[i++] = newCommand("clear", "cls", clear_screen, "Clears the screen");
 
 	// P1: Shell
 	commands[i++] = newCommand("project1", "p1", P1_project1, "P1: Shell");

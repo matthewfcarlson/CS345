@@ -43,7 +43,17 @@ int signals(void)
 			tcb[curTask].signal &= ~mySIGINT;
 			(*tcb[curTask].sigIntHandler)();
 		}
-	}
+        if (tcb[curTask].signal & mySIGCONT)
+        {
+            tcb[curTask].signal &= ~mySIGCONT;
+            (*tcb[curTask].sigContHandler)();
+        }
+        if (tcb[curTask].signal & mySIGTSTP)
+        {
+            tcb[curTask].signal &= ~mySIGTSTP;
+            (*tcb[curTask].sigTstpHandler)();
+        }
+    }
 	return 0;
 }
 
@@ -61,7 +71,17 @@ int sigAction(void (*sigHandler)(void), int sig)
 			tcb[curTask].sigIntHandler = sigHandler;		// mySIGINT handler
 			return 0;
 		}
-	}
+        case mySIGCONT:
+        {
+            tcb[curTask].sigContHandler = sigHandler;		// mySIGINT handler
+            return 0;
+        }
+        case mySIGTSTP:
+        {
+            tcb[curTask].sigTstpHandler = sigHandler;		// mySIGINT handler
+            return 0;
+        }
+    }
 	return 1;
 }
 
@@ -103,6 +123,23 @@ void defaultSigIntHandler(void)			// task mySIGINT handler
 	return;
 }
 
+void defaultSigContHandler(void)			// task mySIGCONT handler
+{
+    printf("\ndefaultSigContHandler");
+    return;
+}
+
+
+void defaultSigTstopHandler(void)			// task mySIGTSTP handler
+{
+    printf("\ndefaultSigTstopHandler");
+    return;
+}
+
+// **********************************************************************
+// **********************************************************************
+//	Create Signal handlers for a task
+//
 
 void createTaskSigHandlers(int tid)
 {
@@ -110,11 +147,15 @@ void createTaskSigHandlers(int tid)
 	if (tid)
 	{
 		// inherit parent signal handlers
-		tcb[tid].sigIntHandler = tcb[curTask].sigIntHandler;			// mySIGINT handler
+		tcb[tid].sigIntHandler = tcb[curTask].sigIntHandler;			// mySIGINT   handler
+        tcb[tid].sigTstpHandler = tcb[curTask].sigTstpHandler;			// mySIGTSTOP handler
+        tcb[tid].sigContHandler = tcb[curTask].sigContHandler;			// mySIGCONT  handler
 	}
 	else
 	{
 		// otherwise use defaults
 		tcb[tid].sigIntHandler = defaultSigIntHandler;			// task mySIGINT handler
+        tcb[tid].sigContHandler = defaultSigContHandler;			// task mySIGINT handler
+        tcb[tid].sigTstpHandler = defaultSigTstopHandler;			// task mySIGINT handler
 	}
 }

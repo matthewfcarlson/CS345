@@ -60,6 +60,14 @@ extern int lastPollClock;			// last pollClock
 
 extern int superMode;						// system mode
 
+// Globals
+const int NUM_COMMANDS_TO_TRACK = 10;
+static char commandQueue[NUM_COMMANDS_TO_TRACK][INBUF_SIZE];
+static int commandQueueLength[NUM_COMMANDS_TO_TRACK];
+static int currentQueueSelector = 0;
+static int lastCommandQueueIndex = 0;
+static bool currentSelectingHistory = FALSE;
+
 
 // **********************************************************************
 // **********************************************************************
@@ -84,53 +92,204 @@ void pollInterrupts(void)
 	return;
 } // end pollInterrupts
 
+static void delete_line(){
+    int i = 0;
+    for (i=0;i< inBufIndx; i++){
+        printf("\b");
+    }
+    for (i=0;i< inBufIndx; i++){
+        printf(" ");
+    }
+    for (i=0;i< inBufIndx; i++){
+        printf("\b");
+    }
+    //printf("\33[2K\r");
+}
+
+// Handles the up and down keys
+static void history_previous(){
+    int i = 0;
+    int index = 0;
+    
+    if (currentSelectingHistory == FALSE){
+        currentQueueSelector = lastCommandQueueIndex;
+    }
+    else{
+        index = currentQueueSelector;
+        if (currentQueueSelector == 0) currentQueueSelector = NUM_COMMANDS_TO_TRACK;
+        currentQueueSelector --;
+        if (currentQueueSelector == lastCommandQueueIndex) currentQueueSelector = index;
+    }
+    
+    if (commandQueue[currentQueueSelector][0]){
+        delete_line();
+        //printf("\33[2K\r%s",commandQueue[currentQueueSelector]);
+        printf("%s",commandQueue[currentQueueSelector]);
+        inBufIndx = commandQueueLength[currentQueueSelector];
+        strcpy(inBuffer,commandQueue[currentQueueSelector]);
+    }
+    
+    
+    currentSelectingHistory = TRUE;
+}
+
+static void history_next(){
+    //int index = currentQueueSelector;
+    if (currentSelectingHistory == TRUE && currentQueueSelector != lastCommandQueueIndex){
+        currentQueueSelector ++;
+        if (currentQueueSelector == NUM_COMMANDS_TO_TRACK) currentQueueSelector = 0;
+        if (commandQueue[currentQueueSelector][0]){
+            delete_line();
+            //printf("\33[2K\r%s",commandQueue[currentQueueSelector]);
+            printf("%s",commandQueue[currentQueueSelector]);
+            inBufIndx = commandQueueLength[currentQueueSelector];
+            strcpy(inBuffer,commandQueue[currentQueueSelector]);
+        }
+
+        
+    }
+    
+}
+
+static void history_add(){
+    lastCommandQueueIndex ++;
+    if (lastCommandQueueIndex == NUM_COMMANDS_TO_TRACK) lastCommandQueueIndex = 0;
+    commandQueueLength[lastCommandQueueIndex] = inBufIndx;
+    strcpy(commandQueue[lastCommandQueueIndex],inBuffer);
+    currentSelectingHistory = FALSE;
+}
+
+static void history_print(){
+    int i = 0;
+    int index = lastCommandQueueIndex;
+    for (i =0; i < NUM_COMMANDS_TO_TRACK; i++){
+        printf("%d:\t%s\t(%d)\n",i,commandQueue[index],index);
+        index ++;
+        if (index == NUM_COMMANDS_TO_TRACK) index = 0;
+    }
+}
+
 
 // **********************************************************************
 // keyboard interrupt service routine
 //
 static void keyboard_isr()
 {
+    static int control_char = 0;
 	// assert system mode
 	assert("keyboard_isr Error" && superMode);
 
 	semSignal(charReady);					// SIGNAL(charReady) (No Swap)
 	if (charFlag == 0)
 	{
-		switch (inChar)
-		{
-			case '\r':
-			case '\n':
-			{
-				inBufIndx = 0;				// EOL, signal line ready
-				semSignal(inBufferReady);	// SIGNAL(inBufferReady)
-				break;
-			}
+        if (control_char == 0)
+        {
+            switch (inChar)
+            {
+                case '\r':
+                case '\n':
+                {
+                    history_add();
+                    inBufIndx = 0;				// EOL, signal line ready
+                    semSignal(inBufferReady);	// SIGNAL(inBufferReady)
+                    break;
+                }
+                
+                case 33:
+                case 127:
+                case '\b':
+                {
+                    if (inBufIndx > 0){
+                        inBuffer[inBufIndx] = 0;
+                        inBufIndx--;
+                        printf("\b \b");		// echo backspace character
+                    }
+                    break;
+                }
 
-			case 0x18:						// ^x
-			{
-				inBufIndx = 0;
-				inBuffer[0] = 0;
-				sigSignal(0, mySIGINT);		// interrupt task 0
-				semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
-				break;
-			}
+                case 0x18:						// ^x
+                {
+                    inBufIndx = 0;
+                    inBuffer[0] = 0;
+                    sigSignal(0, mySIGINT);		// interrupt task 0
+                    semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+                    break;
+                }
+                    
+                case 0x17:						// ^W
+                {
+                    inBufIndx = 0;
+                    inBuffer[0] = 0;
+                    sigSignal(0, mySIGCONT);		// interrupt task 0
+                    semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+                    break;
+                }
+                    
+                case 0x12:						// ^R
+                {
+                    inBufIndx = 0;
+                    inBuffer[0] = 0;
+                    sigSignal(0, mySIGTSTP);		// interrupt task 0
+                    semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+                    break;
+                }
+                
+                //if we get a weird key
+                case 27:
+                {
+                    control_char = 1;
+                    break;
+                }
 
-			default:
-			{
-				inBuffer[inBufIndx++] = inChar;
-				inBuffer[inBufIndx] = 0;
-				printf("%c", inChar);		// echo character
-			}
+                default:
+                {
+                    if (inBufIndx < INBUF_SIZE){
+                        inBuffer[inBufIndx++] = inChar;
+                        inBuffer[inBufIndx] = 0;
+                        printf("%c", inChar);		// echo character
+                    }
+                }
+            }
+            
 		}
+        else
+        {
+            //we have a control character
+            if (control_char == 2){
+                //printf("Control Character %i",inChar);
+                switch (inChar){
+                    case 65:
+                        //printf("Up arrow");
+                        history_previous();
+                        break;
+                    case 66:
+                        //printf("Down arrow");
+                        history_next();
+                        break;
+                    case 68:
+                        //printf("Left arrow");
+                        history_print();
+                        break;
+                    case 67:
+                        //printf("Right arrow");
+                        break;
+                
+                }
+                control_char = 0;
+            }
+            else if (inChar == 91 && control_char == 1) control_char = 2;
+            else control_char = 0;
+        }
 	}
 	else
 	{
-		// single character mode
+        // single character mode
 		inBufIndx = 0;
 		inBuffer[inBufIndx] = 0;
 	}
 	return;
 } // end keyboard_isr
+
 
 
 // **********************************************************************
