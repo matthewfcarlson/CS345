@@ -108,7 +108,6 @@ static void delete_line(){
 
 // Handles the up and down keys
 static void history_previous(){
-    int i = 0;
     int index = 0;
     
     if (currentSelectingHistory == FALSE){
@@ -218,19 +217,13 @@ static void keyboard_isr()
                     
                 case 0x17:						// ^W
                 {
-                    inBufIndx = 0;
-                    inBuffer[0] = 0;
-                    sigSignal(0, mySIGCONT);		// interrupt task 0
-                    semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+                    sigSignal(-1, mySIGCONT);		// interrupt task 0
                     break;
                 }
                     
                 case 0x12:						// ^R
                 {
-                    inBufIndx = 0;
-                    inBuffer[0] = 0;
-                    sigSignal(0, mySIGTSTP);		// interrupt task 0
-                    semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+                    sigSignal(-1, mySIGTSTP);		// interrupt task 0
                     break;
                 }
                 

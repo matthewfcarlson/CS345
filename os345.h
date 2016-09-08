@@ -90,8 +90,8 @@ typedef struct							// task control block
 	int signal;							// task signals (project 1)
 	void (*sigContHandler)(void);	// task mySIGCONT handler
 	void (*sigIntHandler)(void);	// task mySIGINT handler
-//	void (*sigKillHandler)(void);	// task mySIGKILL handler
-//	void (*sigTermHandler)(void);	// task mySIGTERM handler
+	void (*sigKillHandler)(void);	// task mySIGKILL handler
+	void (*sigTermHandler)(void);	// task mySIGTERM handler
 	void (*sigTstpHandler)(void);	// task mySIGTSTP handler
 	TID parent;							// task parent
 	int RPT;								// task root page table (project 5)
@@ -154,7 +154,7 @@ int semTryLock(Semaphore*);
 // ***********************************************************************
 // Command prototypes
 
-#define NUM_COMMANDS 50
+#define NUM_COMMANDS 51
 typedef struct								// command struct
 {
 	char* command;

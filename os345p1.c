@@ -50,7 +50,8 @@ Command* newCommand(char*, char*, int (*func)(int, char**), char*);
 
 void mySigIntHandler()
 {
-	printf("SIG INT");
+	printf("SIG INT on %d",curTask);
+    sigSignal(-1, mySIGTERM);
 }
 
 void mySigContHandler()
@@ -85,9 +86,8 @@ int P1_shellTask(int argc, char* argv[])
 	// initialize shell commands
 	commands = P1_init();					// init shell commands
 
-	sigAction(mySigContHandler, mySIGCONT);
-    sigAction(mySigIntHandler, mySIGINT);    
-    sigAction(mySigStopHandler, mySIGTSTP);
+	sigAction(mySigIntHandler, mySIGINT);
+    
     
 
     
@@ -108,7 +108,23 @@ int P1_shellTask(int argc, char* argv[])
 		// ?? parse command line into argc, argv[] variables
 		// ?? must use malloc for argv storage!
 		{
+            
 			static char *sp, *myArgv[MAX_ARGS];
+            static bool error = FALSE;
+            static bool stringEnd = FALSE;
+            sp = inBuffer;
+            error = FALSE;
+            stringEnd = FALSE;
+            newArgc = 1;
+            myArgv[0] = sp = inBuffer;				// point to input string
+            //walk through the string array
+            for (i=0; i< INBUF_SIZE && error == 0 && stringEnd == 0; i++){
+                
+                printf("%c\n",*sp);
+                if (*sp == 0) stringEnd = TRUE;
+                sp++;
+                
+            }
 
 			// init arguments
 			newArgc = 1;
@@ -155,7 +171,8 @@ int P1_shellTask(int argc, char* argv[])
 
 int P1AliveTask(int argc, char* argv[])
 {
-	while (1)
+   
+    while (1)
 	{
 		int i;
 		printf("\n(%d) ", curTask);
@@ -238,11 +255,25 @@ int P1_help(int argc, char* argv[])
 	return 0;
 } // end P1_help
 
+// ***********************************************************************
+// ***********************************************************************
+// clear screen command
+//
 int clear_screen(int argc, char* argv[]){
     printf("\033[2J\033[1;1H");
     return 0;
 }
 
+// ***********************************************************************
+// ***********************************************************************
+// clear screen command
+//
+int P1_args(int argc, char* argv[]){
+    int i;
+    printf("\n%d argument(s) passed in.\n\r",argc);
+    for (i=0;i<argc;i++) printf("%d:\t%s\n\r",i,argv[i]);
+    return 0;
+}
 
 // ***********************************************************************
 // ***********************************************************************
@@ -286,6 +317,8 @@ Command** P1_init()
 	commands[i++] = newCommand("project1", "p1", P1_project1, "P1: Shell");
 	commands[i++] = newCommand("help", "he", P1_help, "OS345 Help");
 	commands[i++] = newCommand("lc3", "lc3", P1_lc3, "Execute LC3 program");
+    commands[i++] = newCommand("args", "args", P1_args, "Shows the arguments passed into a command");
+    
 
 	// P2: Tasking
 	commands[i++] = newCommand("project2", "p2", P2_project2, "P2: Tasking");
