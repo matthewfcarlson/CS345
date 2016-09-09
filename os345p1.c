@@ -78,6 +78,18 @@ void copy_arg(char* dest, char* src){
         //printf("Decoded Number: %d from %s",decoded_number,src);
         sprintf(dest, "%d", decoded_number);
     }
+    else if (src[0] == '0'){
+        src += 1;
+        decoded_number = (int)strtol(src, NULL, 8);
+        //printf("Decoded Number: %d from %s",decoded_number,src);
+        sprintf(dest, "%d", decoded_number);
+    }
+    else if (src[0] == '%'){
+        src += 1;
+        decoded_number = (int)strtol(src, NULL, 2);
+        //printf("Decoded Number: %d from %s",decoded_number,src);
+        sprintf(dest, "%d", decoded_number);
+    }
     else
         strcpy(dest, src);
 }
@@ -119,6 +131,7 @@ int P1_shellTask(int argc, char* argv[])
 			
             static bool error = FALSE;
             static bool stringEnd = FALSE;
+            static bool backgroundMode;
             static enum ArgParseState currentParseState = PARSE_SPACES;
             static char *ep;
             static char *sp;
@@ -128,6 +141,7 @@ int P1_shellTask(int argc, char* argv[])
             currentParseState = PARSE_COMMAND;
             sp = inBuffer;
             ep = sp;
+            backgroundMode = FALSE;
             error = FALSE;
             stringEnd = FALSE;
             newArgc = 0;
@@ -154,14 +168,21 @@ int P1_shellTask(int argc, char* argv[])
                         
                         
                         break;
+                    case '\t':
                     case ' ':
                         if (currentParseState == PARSE_STRING){
                             ep++;
                             break;
                         }
-                        
-                        if (currentParseState == PARSE_COMMAND) currentParseState = PARSE_SPACES;
+                        //if it's a double space ignore it
                         *ep = 0;
+                        if (*sp == 0) {
+                            sp++;
+                            ep++;
+                            break;
+                        }
+                        if (currentParseState == PARSE_COMMAND) currentParseState = PARSE_SPACES;
+                        
                         newArgv[newArgc] = malloc(sizeof(char) * INBUF_SIZE);
                         if (currentParseState == PARSE_STRING_END){
                             currentParseState = PARSE_SPACES;
@@ -173,6 +194,11 @@ int P1_shellTask(int argc, char* argv[])
                         newArgc += 1;
                         ep ++;
                         sp = ep;
+                        break;
+                    case '&':
+                        backgroundMode = TRUE;
+                        *ep = 0;
+                        ep++;
                         break;
                     case 0:
                         stringEnd = TRUE;

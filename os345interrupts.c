@@ -67,6 +67,7 @@ static int commandQueueLength[NUM_COMMANDS_TO_TRACK];
 static int currentQueueSelector = 0;
 static int lastCommandQueueIndex = 0;
 static bool currentSelectingHistory = FALSE;
+static int cursorIndex = 0;
 
 
 // **********************************************************************
@@ -125,6 +126,7 @@ static void history_previous(){
         //printf("\33[2K\r%s",commandQueue[currentQueueSelector]);
         printf("%s",commandQueue[currentQueueSelector]);
         inBufIndx = commandQueueLength[currentQueueSelector];
+        cursorIndex = inBufIndx;
         strcpy(inBuffer,commandQueue[currentQueueSelector]);
     }
     
@@ -142,6 +144,7 @@ static void history_next(){
             //printf("\33[2K\r%s",commandQueue[currentQueueSelector]);
             printf("%s",commandQueue[currentQueueSelector]);
             inBufIndx = commandQueueLength[currentQueueSelector];
+            cursorIndex = inBufIndx;
             strcpy(inBuffer,commandQueue[currentQueueSelector]);
         }
 
@@ -168,6 +171,29 @@ static void history_print(){
     }
 }
 
+static void insert_char(char in){
+    int i;
+    if (cursorIndex>inBufIndx) cursorIndex = inBufIndx;
+    
+    
+    
+    printf("%c", in);		// echo character
+    for (i=inBufIndx;i>=cursorIndex;i--){
+        inBuffer[i+1] = inBuffer[i];
+    }
+    
+    inBuffer[cursorIndex] = in;
+    cursorIndex++;
+    inBufIndx++;
+    inBuffer[inBufIndx] = 0;
+    
+    for (i=cursorIndex;i<inBufIndx;i++) printf("%c",inBuffer[i]);
+    for (i=cursorIndex;i<inBufIndx;i++) printf("\b");
+    
+    
+    
+}
+
 
 // **********************************************************************
 // keyboard interrupt service routine
@@ -175,6 +201,8 @@ static void history_print(){
 static void keyboard_isr()
 {
     static int control_char = 0;
+    int i;
+    
 	// assert system mode
 	assert("keyboard_isr Error" && superMode);
 
@@ -190,6 +218,7 @@ static void keyboard_isr()
                 {
                     history_add();
                     inBufIndx = 0;				// EOL, signal line ready
+                    cursorIndex = 0;
                     semSignal(inBufferReady);	// SIGNAL(inBufferReady)
                     break;
                 }
@@ -198,10 +227,20 @@ static void keyboard_isr()
                 case 127:
                 case '\b':
                 {
-                    if (inBufIndx > 0){
-                        inBuffer[inBufIndx] = 0;
+                    //backspace
+                    if (cursorIndex > 0){
+                        printf("\b");
+                        cursorIndex--;
+                        for (i = cursorIndex;i < inBufIndx; i++){
+                            inBuffer[i] = inBuffer[i+1];
+                            
+                            if (inBuffer[i] == 0) printf(" ");
+                            else printf("%c",inBuffer[i]);
+                        }
+                        for (i = cursorIndex;i < inBufIndx; i++) printf("\b");
+                        
                         inBufIndx--;
-                        printf("\b \b");		// echo backspace character
+                        
                     }
                     break;
                 }
@@ -209,6 +248,7 @@ static void keyboard_isr()
                 case 0x18:						// ^x
                 {
                     inBufIndx = 0;
+                    cursorIndex = 0;
                     inBuffer[0] = 0;
                     sigSignal(0, mySIGINT);		// interrupt task 0
                     semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
@@ -238,9 +278,7 @@ static void keyboard_isr()
                 default:
                 {
                     if (inBufIndx < INBUF_SIZE){
-                        inBuffer[inBufIndx++] = inChar;
-                        inBuffer[inBufIndx] = 0;
-                        printf("%c", inChar);		// echo character
+                        insert_char(inChar);
                     }
                 }
             }
@@ -261,11 +299,16 @@ static void keyboard_isr()
                         history_next();
                         break;
                     case 68:
-                        //printf("Left arrow");
-                        history_print();
+                        //left arrow
+                        printf("\b");
+                        if (cursorIndex > 0) cursorIndex--;
+                        //history_print();
                         break;
                     case 67:
                         //printf("Right arrow");
+                        printf("%c",inBuffer[cursorIndex]);
+                        if (cursorIndex < inBufIndx) cursorIndex++;
+                        
                         break;
                 
                 }
