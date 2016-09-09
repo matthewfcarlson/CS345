@@ -78,7 +78,19 @@ void mySigStopHandler()
 // 6. If found, perform a function variable call passing argc/argv variables.
 // 7. Supports background execution of non-intrinsic commands.
 //
-enum ArgParseState {PARSE_STRING, PARSE_SPACES, PARSE_COMMAND};
+void copy_arg(char* dest, char* src){
+    int decoded_number = 0;
+    
+    if (src[0] == '0' && src[1] == 'x'){
+        src += 2;
+        decoded_number = (int)strtol(src, NULL, 16);
+        //printf("Decoded Number: %d from %s",decoded_number,src);
+        sprintf(dest, "%d", decoded_number);
+    }
+    else
+        strcpy(dest, src);
+}
+enum ArgParseState {PARSE_STRING, PARSE_SPACES, PARSE_COMMAND,PARSE_STRING_END};
 int P1_shellTask(int argc, char* argv[])
 {
 	int i, found;
@@ -143,7 +155,7 @@ int P1_shellTask(int argc, char* argv[])
                             currentParseState = PARSE_STRING;
                         }
                         else if (currentParseState == PARSE_STRING){
-                            currentParseState = PARSE_SPACES;
+                            currentParseState = PARSE_STRING_END;
                         }
                         else{
                             error = TRUE;
@@ -156,10 +168,16 @@ int P1_shellTask(int argc, char* argv[])
                             ep++;
                             break;
                         }
+                        
                         if (currentParseState == PARSE_COMMAND) currentParseState = PARSE_SPACES;
                         *ep = 0;
                         newArgv[newArgc] = malloc(sizeof(char) * INBUF_SIZE);
-                        strcpy(newArgv[newArgc], sp);
+                        if (currentParseState == PARSE_STRING_END){
+                            currentParseState = PARSE_SPACES;
+                            strcpy(newArgv[newArgc], sp);
+                        }
+                        else
+                            copy_arg(newArgv[newArgc], sp);
                         //printf("\nNew Arg: %s",sp);
                         newArgc += 1;
                         ep ++;
@@ -168,7 +186,13 @@ int P1_shellTask(int argc, char* argv[])
                     case 0:
                         stringEnd = TRUE;
                         newArgv[newArgc] = malloc(sizeof(char) * INBUF_SIZE);
-                        strcpy(newArgv[newArgc], sp);
+                        if (currentParseState == PARSE_STRING_END){
+                            currentParseState = PARSE_SPACES;
+                            strcpy(newArgv[newArgc], sp);
+                        }
+                        else
+                            copy_arg(newArgv[newArgc], sp);
+                        
                         //printf("END: %s",sp);
                         newArgc += 1;
                         if (currentParseState == PARSE_STRING) error = TRUE;
@@ -255,6 +279,19 @@ int P1_project1(int argc, char* argv[])
 	}
 	return 0;
 } // end P1_project1
+
+int P1_add(int argc, char* argv[]){
+    int i=0;
+    int accumulator = 0;
+    int curr_number;
+    for (i = 1; i < argc; i++){
+        curr_number = atoi(argv[i]);
+        //printf("%d from %s\n",curr_number, argv[i]);
+        accumulator += curr_number;
+    }
+    printf("\nSum: %d",accumulator);
+    return 0;
+}
 
 
 
@@ -376,6 +413,7 @@ Command** P1_init()
 	commands[i++] = newCommand("help", "he", P1_help, "OS345 Help");
 	commands[i++] = newCommand("lc3", "lc3", P1_lc3, "Execute LC3 program");
     commands[i++] = newCommand("args", "args", P1_args, "Shows the arguments passed into a command");
+    commands[i++] = newCommand("add", "sum", P1_add, "Adds all the numbers of the command line together");
     
 
 	// P2: Tasking
