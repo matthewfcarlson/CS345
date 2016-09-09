@@ -46,7 +46,7 @@ int signals(void)
         }
 		if (tcb[curTask].signal & mySIGINT)
 		{
-            printf("Setting SIGINT\n");
+            
 			tcb[curTask].signal &= ~mySIGINT;
 			(*tcb[curTask].sigIntHandler)();
 		}
@@ -55,11 +55,17 @@ int signals(void)
         {
             tcb[curTask].signal &= ~mySIGCONT;
             (*tcb[curTask].sigContHandler)();
+            return 0;
         }
         if (tcb[curTask].signal & mySIGTSTP)
         {
+            
             tcb[curTask].signal &= ~mySIGTSTP;
             (*tcb[curTask].sigTstpHandler)();
+            return 1;
+        }
+        
+        if (tcb[curTask].signal & mySIGSTOP){
             return 1;
         }
     }
@@ -90,6 +96,7 @@ int sigAction(void (*sigHandler)(void), int sig)
             tcb[curTask].sigTstpHandler = sigHandler;		// mySIGINT handler
             return 0;
         }
+            
         case mySIGTERM:
         {
             tcb[curTask].sigTermHandler = sigHandler;		// mySIGINT handler
@@ -108,19 +115,26 @@ int sigAction(void (*sigHandler)(void), int sig)
 //
 int sigSignal(int taskId, int sig)
 {
+    int tasks_affected = 0;
 	// check for task
 	if ((taskId >= 0) && tcb[taskId].name != 0)
 	{
         //printf("Signalling Task %d: %x\n\r",taskId,sig);
 		tcb[taskId].signal |= sig;
+        if (sig == mySIGCONT){
+            tcb[taskId].signal &= (~mySIGSTOP) & (~mySIGTSTP);
+        }
+        
 		return 0;
 	}
 	else if (taskId == -1)
 	{
 		for (taskId=0; taskId<MAX_TASKS; taskId++)
 		{
-			sigSignal(taskId, sig);
+			if (!sigSignal(taskId, sig)) tasks_affected++;
 		}
+        if (sig == mySIGSTOP) printf("\n\r%d tasks stopped.",tasks_affected);
+        if (sig == mySIGCONT) printf("\n\r%d tasks resumed.\n",tasks_affected);
 		return 0;
 	}
     else if (taskId == -2)

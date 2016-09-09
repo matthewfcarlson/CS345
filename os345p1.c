@@ -51,19 +51,10 @@ int P1_args(int argc, char* argv[]);
 
 void mySigIntHandler()
 {
-	printf("SIG INT on %d",curTask);
+	//printf("SIG INT on %d",curTask);
     sigSignal(-1, mySIGTERM);
 }
 
-void mySigContHandler()
-{
-    printf("SIG CONT");
-}
-
-void mySigStopHandler()
-{
-    printf("SIG stop");
-}
 
 /* *********************************************************************** */
 // myShell - command line interpreter

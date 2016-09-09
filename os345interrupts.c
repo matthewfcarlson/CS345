@@ -217,13 +217,14 @@ static void keyboard_isr()
                     
                 case 0x17:						// ^W
                 {
-                    sigSignal(-1, mySIGCONT);		// interrupt task 0
+                    sigSignal(-1, mySIGTSTP);		// interrupt task 0
                     break;
                 }
                     
                 case 0x12:						// ^R
                 {
-                    sigSignal(-1, mySIGTSTP);		// interrupt task 0
+                    
+                    sigSignal(-1, mySIGCONT);		// interrupt task 0
                     break;
                 }
                 
