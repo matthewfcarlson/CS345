@@ -236,7 +236,7 @@ static void keyboard_isr()
 
                 default:
                 {
-                    if (inBufIndx < INBUF_SIZE){
+                    if (inBufIndx < INBUF_SIZE - 1){
                         inBuffer[inBufIndx++] = inChar;
                         inBuffer[inBufIndx] = 0;
                         printf("%c", inChar);		// echo character

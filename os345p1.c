@@ -47,6 +47,7 @@ Command** commands;						// shell commands
 // project 1 prototypes
 Command** P1_init(void);
 Command* newCommand(char*, char*, int (*func)(int, char**), char*);
+int P1_args(int argc, char* argv[]);
 
 void mySigIntHandler()
 {
@@ -77,6 +78,7 @@ void mySigStopHandler()
 // 6. If found, perform a function variable call passing argc/argv variables.
 // 7. Supports background execution of non-intrinsic commands.
 //
+enum ArgParseState {PARSE_STRING, PARSE_SPACES, PARSE_COMMAND};
 int P1_shellTask(int argc, char* argv[])
 {
 	int i, found;
@@ -106,38 +108,93 @@ int P1_shellTask(int argc, char* argv[])
 
 		// ?? vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		// ?? parse command line into argc, argv[] variables
+        
+        
 		// ?? must use malloc for argv storage!
 		{
             
-			static char *sp, *myArgv[MAX_ARGS];
+			
             static bool error = FALSE;
             static bool stringEnd = FALSE;
+            static enum ArgParseState currentParseState = PARSE_SPACES;
+            static char *ep;
+            static char *sp;
+            
+            //setup state
+            newArgv = malloc(sizeof(char*) * MAX_ARGS);
+            currentParseState = PARSE_COMMAND;
             sp = inBuffer;
+            ep = sp;
             error = FALSE;
             stringEnd = FALSE;
-            newArgc = 1;
-            myArgv[0] = sp = inBuffer;				// point to input string
+            newArgc = 0;
+            for (i=1; i<MAX_ARGS; i++) newArgv[i] = 0;
+            //newArgv[0] = malloc(sizeof(char) * INBUF_SIZE);
+            
             //walk through the string array
             for (i=0; i< INBUF_SIZE && error == 0 && stringEnd == 0; i++){
                 
-                printf("%c\n",*sp);
-                if (*sp == 0) stringEnd = TRUE;
-                sp++;
+                switch (*ep){
+                    case '"':
+                        *ep = 0;
+                        ep++;
+                        if (currentParseState == PARSE_SPACES){
+                            sp = ep;
+                            currentParseState = PARSE_STRING;
+                        }
+                        else if (currentParseState == PARSE_STRING){
+                            currentParseState = PARSE_SPACES;
+                        }
+                        else{
+                            error = TRUE;
+                        }
+                        
+                        
+                        break;
+                    case ' ':
+                        if (currentParseState == PARSE_STRING){
+                            ep++;
+                            break;
+                        }
+                        if (currentParseState == PARSE_COMMAND) currentParseState = PARSE_SPACES;
+                        *ep = 0;
+                        newArgv[newArgc] = malloc(sizeof(char) * INBUF_SIZE);
+                        strcpy(newArgv[newArgc], sp);
+                        //printf("\nNew Arg: %s",sp);
+                        newArgc += 1;
+                        ep ++;
+                        sp = ep;
+                        break;
+                    case 0:
+                        stringEnd = TRUE;
+                        newArgv[newArgc] = malloc(sizeof(char) * INBUF_SIZE);
+                        strcpy(newArgv[newArgc], sp);
+                        //printf("END: %s",sp);
+                        newArgc += 1;
+                        if (currentParseState == PARSE_STRING) error = TRUE;
+                        
+                        break;
+                    default:
+                        //printf("\nLetter: %c",*ep);
+                        if (currentParseState == PARSE_COMMAND){
+                            *ep = tolower(*ep);
+                        }
+                        ep++;
+                        break;
+                }
+                
+                
                 
             }
+           
+            
+            if (error) {
+                printf("\nUnable to properly parse command!");
+                continue;
+            }
+            
 
-			// init arguments
-			newArgc = 1;
-			myArgv[0] = sp = inBuffer;				// point to input string
-			for (i=1; i<MAX_ARGS; i++) myArgv[i] = 0;
-
-			// parse input string
-			while ((sp = strchr(sp, ' ')))
-			{
-				*sp++ = 0;
-				myArgv[newArgc++] = sp;
-			}
-			newArgv = myArgv;
+			
 		}
 		// ?? ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -157,6 +214,7 @@ int P1_shellTask(int argc, char* argv[])
 		if (!found)	printf("\nInvalid command: \'%s\'",newArgv[0]);
 
 		// ?? free up any malloc'd argv parameters
+        for (i=0; i<newArgc;i++) free(newArgv[i]);
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
 	}
 	return 0;						// terminate task
@@ -271,7 +329,7 @@ int clear_screen(int argc, char* argv[]){
 int P1_args(int argc, char* argv[]){
     int i;
     printf("\n%d argument(s) passed in.\n\r",argc);
-    for (i=0;i<argc;i++) printf("%d:\t%s\n\r",i,argv[i]);
+    for (i=0;i<argc;i++) printf("%d:\t[%s]\n\r",i,argv[i]);
     return 0;
 }
 
