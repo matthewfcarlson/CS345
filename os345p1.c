@@ -101,12 +101,13 @@ int P1_shellTask(int argc, char* argv[])
 	int i, found;
 	int newArgc;							// # of arguments
 	char** newArgv;							// pointers to arguments
+    bool backgroundMode;
 
 	// initialize shell commands
 	commands = P1_init();					// init shell commands
 
 	sigAction(mySigIntHandler, mySIGINT);
-    
+    newArgv = malloc(sizeof(char*) * MAX_ARGS);
     
 
     
@@ -133,13 +134,14 @@ int P1_shellTask(int argc, char* argv[])
 			
             static bool error = FALSE;
             static bool stringEnd = FALSE;
-            static bool backgroundMode;
+            
             static enum ArgParseState currentParseState = PARSE_SPACES;
             static char *ep;
             static char *sp;
             
+            
             //setup state
-            newArgv = malloc(sizeof(char*) * MAX_ARGS);
+            
             currentParseState = PARSE_COMMAND;
             sp = inBuffer;
             ep = sp;
@@ -219,6 +221,7 @@ int P1_shellTask(int argc, char* argv[])
                         break;
                     default:
                         //printf("\nLetter: %c",*ep);
+                        
                         if (currentParseState == PARSE_COMMAND){
                             *ep = tolower(*ep);
                         }
@@ -236,6 +239,8 @@ int P1_shellTask(int argc, char* argv[])
                 continue;
             }
             
+            
+            
 
 			
 		}
@@ -248,10 +253,20 @@ int P1_shellTask(int argc, char* argv[])
 				 !strcmp(newArgv[0], commands[i]->shortcut))
 			{
 				// command found, make implicit call thru function pointer
-				int retValue = (*commands[i]->func)(newArgc, newArgv);
-				if (retValue) printf("\nCommand Error \'%d\'", retValue);
+                if (backgroundMode){
+                    char taskName[255];
+                    strcpy(taskName,newArgv[0]);
+                    int tid = createTask(taskName, (*commands[i]->func), LOW_PRIORITY, newArgc, newArgv);
+                    printf("\nCreating Background %s: %i",newArgv[0],tid);
+                }
+                else{
+                    int retValue = (*commands[i]->func)(newArgc, newArgv);
+                    if (retValue) printf("\nCommand Error \'%d\'", retValue);
+                    
+                }
 				found = TRUE;
 				break;
+                
 			}
 		}
 		if (!found)	printf("\nInvalid command: \'%s\'",newArgv[0]);
@@ -260,6 +275,7 @@ int P1_shellTask(int argc, char* argv[])
         for (i=0; i<newArgc;i++) free(newArgv[i]);
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
 	}
+    free(newArgv);
 	return 0;						// terminate task
 } // end P1_shellTask
 
@@ -283,6 +299,7 @@ int P1AliveTask(int argc, char* argv[])
 	return 0;						// terminate task
 } // end P1AliveTask
 
+
 int P1_project1(int argc, char* argv[])
 {
 	int i;
@@ -299,16 +316,22 @@ int P1_project1(int argc, char* argv[])
 	return 0;
 } // end P1_project1
 
+
+//Adds numbers together
 int P1_add(int argc, char* argv[]){
     int i=0;
     int accumulator = 0;
     int curr_number;
+    
     for (i = 1; i < argc; i++){
         curr_number = atoi(argv[i]);
         //printf("%d from %s\n",curr_number, argv[i]);
         accumulator += curr_number;
     }
+
     printf("\nSum: %d",accumulator);
+    for (i = 0; i < 100000; i++) swapTask();
+
     return 0;
 }
 
@@ -471,7 +494,7 @@ Command** P1_init()
 	commands[i++] = newCommand("copy", "cf", P6_copy, "Copy file");
 	commands[i++] = newCommand("define", "df", P6_define, "Define file");
 	commands[i++] = newCommand("delete", "dl", P6_del, "Delete file");
-	commands[i++] = newCommand("directory", "dir", P6_dir, "List current directory");
+	commands[i++] = newCommand("ls", "dir", P6_dir, "List current directory");
 	commands[i++] = newCommand("mount", "md", P6_mount, "Mount disk");
 	commands[i++] = newCommand("mkdir", "mk", P6_mkdir, "Create directory");
 	commands[i++] = newCommand("run", "run", P6_run, "Execute LC-3 program");
