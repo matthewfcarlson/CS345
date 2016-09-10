@@ -69,7 +69,9 @@ void mySigIntHandler()
 // 6. If found, perform a function variable call passing argc/argv variables.
 // 7. Supports background execution of non-intrinsic commands.
 //
-void copy_arg(char* dest, char* src){
+
+//This parses an argument and copies it to the destination
+void parse_and_copy_arg(char* dest, char* src){
     int decoded_number = 0;
     
     if (src[0] == '0' && src[1] == 'x'){
@@ -189,7 +191,7 @@ int P1_shellTask(int argc, char* argv[])
                             strcpy(newArgv[newArgc], sp);
                         }
                         else
-                            copy_arg(newArgv[newArgc], sp);
+                            parse_and_copy_arg(newArgv[newArgc], sp);
                         //printf("\nNew Arg: %s",sp);
                         newArgc += 1;
                         ep ++;
@@ -208,7 +210,7 @@ int P1_shellTask(int argc, char* argv[])
                             strcpy(newArgv[newArgc], sp);
                         }
                         else
-                            copy_arg(newArgv[newArgc], sp);
+                            parse_and_copy_arg(newArgv[newArgc], sp);
                         
                         //printf("END: %s",sp);
                         newArgc += 1;
