@@ -74,7 +74,7 @@ void mySigIntHandler()
 void parse_and_copy_arg(char* dest, char* src){
     int decoded_number = 0;
     
-    if (src[0] == '0' && src[1] == 'x'){
+    if (src[0] == '0' && tolower(src[1]) == 'x'){
         src += 2;
         decoded_number = (int)strtol(src, NULL, 16);
         //printf("Decoded Number: %d from %s",decoded_number,src);
@@ -92,8 +92,12 @@ void parse_and_copy_arg(char* dest, char* src){
         //printf("Decoded Number: %d from %s",decoded_number,src);
         sprintf(dest, "%d", decoded_number);
     }
-    else
+    else{
+        char* p = src;
+        for ( ; *p; ++p) *p = tolower(*p);
         strcpy(dest, src);
+    }
+    
 }
 enum ArgParseState {PARSE_STRING, PARSE_SPACES, PARSE_COMMAND,PARSE_STRING_END};
 int P1_shellTask(int argc, char* argv[])
@@ -220,11 +224,7 @@ int P1_shellTask(int argc, char* argv[])
                         
                         break;
                     default:
-                        //printf("\nLetter: %c",*ep);
                         
-                        if (currentParseState == PARSE_COMMAND){
-                            *ep = tolower(*ep);
-                        }
                         ep++;
                         break;
                 }
