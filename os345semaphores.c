@@ -53,7 +53,6 @@ void semSignal(Semaphore* s)
 		// binary semaphore
 		// look through tasks for one suspended on this semaphore
 
-temp:	// ?? temporary label
 		for (i=0; i<MAX_TASKS; i++)	// look for suspended task
 		{
 			if (tcb[i].event == s)
@@ -76,10 +75,28 @@ temp:	// ?? temporary label
 	else
 	{
 		// counting semaphore
-		// ?? implement counting semaphore
-
-		goto temp;
-	}
+        s->state += 1;
+        for (i=0; i<MAX_TASKS; i++)	// look for suspended task
+        {
+            if (tcb[i].event == s)
+            {
+                s->state = 0;				// clear semaphore
+                tcb[i].event = 0;			// clear event pointer
+                tcb[i].state = S_READY;	// unblock task
+                
+                //TODO unblocking task function
+                // ?? move task from blocked to ready queue
+                
+                if (!superMode) swapTask();
+                return;
+            }
+        }
+        // nothing waiting on semaphore, go ahead and just signal
+        s->state = 1;						// nothing waiting, signal
+        if (!superMode) swapTask();
+        return;
+        
+    }
 } // end semSignal
 
 
@@ -103,7 +120,7 @@ int semWait(Semaphore* s)
 		// binary semaphore
 		// if state is zero, then block task
 
-temp:	// ?? temporary label
+
 		if (s->state == 0)
 		{
 			tcb[curTask].event = s;		// block task
@@ -120,11 +137,21 @@ temp:	// ?? temporary label
 	}
 	else
 	{
-		// counting semaphore
-		// ?? implement counting semaphore
-
-		goto temp;
-	}
+        //take away a counting semaphonre
+        s->state -=1;
+        if (s->state < 0)
+        {
+            tcb[curTask].event = s;		// block task
+            tcb[curTask].state = S_BLOCKED;
+            
+            
+            swapTask();						// reschedule the tasks
+            return 1;
+        }
+        // state is non-zero (semaphore already signaled)
+        s->state = 0;						// reset state, and don't block
+        return 0;
+    }
 } // end semWait
 
 
@@ -148,7 +175,7 @@ int semTryLock(Semaphore* s)
 		// binary semaphore
 		// if state is zero, then block task
 
-temp:	// ?? temporary label
+
 		if (s->state == 0)
 		{
 			return 0;
@@ -161,8 +188,15 @@ temp:	// ?? temporary label
 	{
 		// counting semaphore
 		// ?? implement counting semaphore
-
-		goto temp;
+        
+        if (s->state <= 0)
+        {
+            return 0;
+        }
+        // state is non-zero (semaphore already signaled)
+        s->state--;						// take away one, and don't block
+        return 1;
+        
 	}
 } // end semTryLock
 

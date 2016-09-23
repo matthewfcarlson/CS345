@@ -59,6 +59,8 @@
 #define BINARY				0
 #define COUNTING			1
 
+
+
 // Swap space (P4)
 enum {PAGE_INIT, PAGE_READ, PAGE_OLD_WRITE, PAGE_NEW_WRITE,
 	  PAGE_GET_SIZE, PAGE_GET_READS, PAGE_GET_WRITES, PAGE_GET_ADR, PAGE_FREE};
@@ -68,6 +70,13 @@ enum {PAGE_INIT, PAGE_READ, PAGE_OLD_WRITE, PAGE_NEW_WRITE,
 typedef int bool;						// boolean value
 typedef int TID;						// task id
 
+typedef struct taskQueue			// semaphore
+{
+    struct taskQueue* nextTask;		// semaphore link
+    TID tid;
+    int prority;
+} TaskQueue;
+
 // semaphore
 typedef struct semaphore			// semaphore
 {
@@ -76,6 +85,7 @@ typedef struct semaphore			// semaphore
 	int state;							// semaphore state
 	int type;							// semaphore type
 	int taskNum;						// semaphore creator task #
+    struct taskQueue* tasksWaiting;
 } Semaphore;
 
 // task control block
@@ -114,6 +124,12 @@ typedef struct
 } Message;
 #define MAX_MESSAGE_SIZE		64
 
+
+
+
+
+
+
 // ***********************************************************************
 // system prototypes
 int createTask(char*, int (*)(int, char**), int, int, char**);
@@ -130,6 +146,11 @@ bool deleteSemaphore(Semaphore** semaphore);
 void semSignal(Semaphore*);
 int semWait(Semaphore*);
 int semTryLock(Semaphore*);
+
+int block_task(int tid, Semaphore* s);
+int unblock_task(Semaphore* s);
+void addToReadyQueue(TID tid, int prority);
+void addToBlockedQueue(TID tid, int prority);
 
 
 // ***********************************************************************

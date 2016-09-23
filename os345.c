@@ -55,6 +55,7 @@ Semaphore* inBufferReady;			// input buffer ready semaphore
 
 Semaphore* tics1sec;				// 1 second semaphore
 Semaphore* tics10thsec;				// 1/10 second semaphore
+Semaphore* tics10sec;               // 10 second semaphore
 
 // **********************************************************************
 // **********************************************************************
@@ -81,9 +82,12 @@ int lastPollClock;					// last pollClock
 bool diskMounted;					// disk has been mounted
 
 time_t oldTime1;					// old 1sec time
+time_t oldTime10;					// old 1sec time
 clock_t myClkTime;
 clock_t myOldClkTime;
-int* rq;							// ready priority queue
+
+//Ready Queues
+static TaskQueue ReadyQueue;
 
 
 // **********************************************************************
@@ -136,6 +140,7 @@ int main(int argc, char* argv[])
 	keyboard = createSemaphore("keyboard", BINARY, 1);
 	tics1sec = createSemaphore("tics1sec", BINARY, 0);
 	tics10thsec = createSemaphore("tics10thsec", BINARY, 0);
+    tics10sec = createSemaphore("tics10sec", COUNTING, 0);
 
 	//?? ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -290,6 +295,36 @@ static int dispatcher()
 } // end dispatcher
 
 
+// **********************************************************************
+// **********************************************************************
+// Unblocks a task on a semaphore
+
+// 1. Finds the highest prority task in the blocked list blocked by the semaphore
+// 2. Moves it to ready list
+// 3. Return 0 if unsuccessful
+
+int unblock_task(Semaphore* s){
+    return 0;
+}
+
+
+
+// **********************************************************************
+// **********************************************************************
+// Blocks a task on a semaphore
+
+// 1. Moves the task from the ready list to the blocked list
+// 2. Return 0 if it is already blocked
+int block_task(int tid, Semaphore* s){
+    //check to make sure we are in the running or ready state
+    if (tcb[curTask].state != S_RUNNING || tcb[curTask].state != S_READY)
+        return 0;
+    
+    
+    return 0;
+}
+
+
 
 // **********************************************************************
 // **********************************************************************
@@ -349,28 +384,11 @@ static int initOS()
 	semaphoreList = 0;					// linked list of active semaphores
 	diskMounted = 0;					// disk has been mounted
 
-	// malloc ready queue
-	rq = (int*)malloc(MAX_TASKS * sizeof(int));
-	if (rq == NULL) return 99;
-
 	// capture current time
 	lastPollClock = clock();			// last pollClock
 	time(&oldTime1);
 
-	// init system tcb's
-	for (i=0; i<MAX_TASKS; i++)
-	{
-		tcb[i].name = NULL;				// tcb
-		taskSems[i] = NULL;				// task semaphore
-	}
-
-	// init tcb
-	for (i=0; i<MAX_TASKS; i++)
-	{
-		tcb[i].name = NULL;
-	}
-
-	// initialize lc-3 memory
+    // initialize lc-3 memory
 	initLC3Memory(LC3_MEM_FRAME, 0xF800>>6);
 
 	// ?? initialize all execution queues
