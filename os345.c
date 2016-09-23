@@ -308,6 +308,56 @@ int unblock_task(Semaphore* s){
 }
 
 
+// **********************************************************************
+// **********************************************************************
+// Blocks a task on a semaphore
+
+// 1. Checks to make sure the task is in the ready queue
+// 2. Take the task out of the ready list
+// 3. Puts it in the blocked list
+// 4. Return 0 if it is already blocked
+
+int block_task(int tid, Semaphore* s){
+    //check to make sure we are in the running or ready state
+    if (tcb[curTask].state != S_RUNNING || tcb[curTask].state != S_READY)
+        return 0;
+    
+    
+    return 0;
+}
+
+// **********************************************************************
+// **********************************************************************
+// Adds a task to the readyQueue
+
+// 1. Moves the task from the ready list to the blocked list
+// 2. Return 0 if it is already blocked
+
+void addToReadyQueue(TID tid, int prority){
+    
+}
+
+// **********************************************************************
+// **********************************************************************
+// Gets the task at the top of the readyQueue
+
+// 1. Moves the task from the ready list to the blocked list
+// 2. Return 0 if it is already blocked
+
+TaskQueue* takeFromReadyQueue(){
+    return 0;
+}
+
+// **********************************************************************
+// **********************************************************************
+// Adds a task it to the blocked Queue
+
+// 1. Moves the task from the ready list to the blocked list
+// 2. Return 0 if it is already blocked
+
+void addToBlockedQueue(Semaphore* s, TID tid, int prority){
+    
+}
 
 // **********************************************************************
 // **********************************************************************
@@ -315,12 +365,8 @@ int unblock_task(Semaphore* s){
 
 // 1. Moves the task from the ready list to the blocked list
 // 2. Return 0 if it is already blocked
-int block_task(int tid, Semaphore* s){
-    //check to make sure we are in the running or ready state
-    if (tcb[curTask].state != S_RUNNING || tcb[curTask].state != S_READY)
-        return 0;
-    
-    
+
+TaskQueue* takeFromBlockedQueue(Semaphore* s){
     return 0;
 }
 
@@ -418,7 +464,12 @@ void powerDown(int code)
 		deleteSemaphore(&semaphoreList);
 
 	// free ready queue
-	free(rq);
+	// TODO: release the queues
+    TaskQueue* releasingTask;
+    while((releasingTask = takeFromReadyQueue())){
+        free(releasingTask);
+    }
+    //free(rq);
 
 	// ?? release any other system resources
 	// ?? deltaclock (project 3)

@@ -80,12 +80,12 @@ typedef struct taskQueue			// semaphore
 // semaphore
 typedef struct semaphore			// semaphore
 {
-	struct semaphore* semLink;		// semaphore link
+	struct semaphore* semLink;          // semaphore link
 	char* name;							// semaphore name
 	int state;							// semaphore state
 	int type;							// semaphore type
 	int taskNum;						// semaphore creator task #
-    struct taskQueue* tasksWaiting;
+    struct taskQueue* tasksWaiting;     // the tasks waiting on the queue
 } Semaphore;
 
 // task control block
@@ -150,7 +150,9 @@ int semTryLock(Semaphore*);
 int block_task(int tid, Semaphore* s);
 int unblock_task(Semaphore* s);
 void addToReadyQueue(TID tid, int prority);
-void addToBlockedQueue(TID tid, int prority);
+TaskQueue* takeFromReadyQueue();
+void addToBlockedQueue(Semaphore* s, TID tid, int prority);
+TaskQueue* takeFromBlockedQueue(Semaphore* s);
 
 
 // ***********************************************************************
