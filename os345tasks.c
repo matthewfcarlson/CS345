@@ -167,7 +167,7 @@ int sysKillTask(int taskId)
 	semSignal(taskSems[taskId]);
 
 	// look for any semaphores created by this task
-	while(sem = *semLink)
+	while((sem = *semLink))
 	{
 		if(sem->taskNum == taskId)
 		{

@@ -201,21 +201,24 @@ static int scheduler()
 	// ?? priorities, clean up dead tasks, and handle semaphores appropriately.
 
 	// schedule next task
+    
     TaskID topTask = checkReadyQueue();
-    if (topTask.tid == curTask && tcb[curTask].state == S_RUNNING){
-        printf("Check to make sure we don't need to switch\n");
+    if (topTask.tid == curTask && tcb[curTask].state == S_READY){
+        
+        //listQueues();
         TaskID readyTask = takeFromReadyQueue();
+        //printf("Check to make sure we don't need to switch for TID:%d\n",readyTask.tid);
         addToReadyQueue(readyTask.tid, readyTask.priority);
         topTask = checkReadyQueue();
-        listQueues();
+        //listQueues();
     }
     
     
     if (topTask.priority == 0) return -2;
     
     if (tcb[topTask.tid].signal & mySIGSTOP) return -1;
-    if (topTask.tid != curTask) printf("Starting task tid: %d\n",topTask.tid);
-  
+    //if (topTask.tid != curTask) printf("Starting task tid: %d\n",topTask.tid);
+    //else printf("Sticking with the same thing");
     
     curTask = topTask.tid;
 
@@ -290,8 +293,11 @@ static int dispatcher()
 		case S_EXIT:
 		{
 			if (curTask == 0) return -1;			// if CLI, then quit scheduler
+            int oldSuperMode = superMode;
+            superMode = TRUE;
 			// release resources and kill task
 			sysKillTask(curTask);					// kill current task
+            superMode = oldSuperMode;
 			break;
 		}
 
@@ -405,16 +411,27 @@ int addToReadyQueue(TID tid, int prority){
         //if the task is already in the ready queue
         if (queuePointer->id.tid == tid){
             free(newtq);
+            printf("Already ready\n");
             return 0;
         }
         queuePointerPrev = queuePointer;
         queuePointer = queuePointer -> nextTask;
     }
     //listQueues();
+    //printf("Now adding\n");
     //Add the task
-    queuePointerPrev->nextTask = newtq;
+   
+    if (queuePointer == ReadyQueue){
+        
+        ReadyQueue = newtq;
+    }
+    else{
+        queuePointerPrev->nextTask = newtq;
+    }
+    
     newtq->nextTask = queuePointer;
     //listQueues();
+    //printf("All better\n");
     if (tcb[tid].state != S_NEW)
         tcb[tid].state = S_READY;
     return 1;
@@ -430,7 +447,7 @@ int addToReadyQueue(TID tid, int prority){
 
 TaskID takeFromReadyQueue(){
     TaskID capturedTask;
-    capturedTask.tid = 0;
+    capturedTask.tid = -1;
     capturedTask.priority = 0;
     
     TaskQueue* newTask = ReadyQueue;
@@ -447,7 +464,7 @@ TaskID takeFromReadyQueue(){
 
 TaskID checkReadyQueue(){
     TaskID capturedTask;
-    capturedTask.tid = 0;
+    capturedTask.tid = -1;
     capturedTask.priority = 0;
     
     TaskQueue* newTask = ReadyQueue;
@@ -469,7 +486,7 @@ TaskID checkReadyQueue(){
 
 int addToBlockedQueue(Semaphore* s, TID tid, int prority){
     
-    if (prority == 0) return 0;
+    if (prority <= 0 || tid < 0) return 0;
     
     TaskQueue* queuePointer = s->tasksWaiting;
     TaskQueue* queuePointerPrev = queuePointer;
@@ -558,7 +575,7 @@ void listQueues(){
 
 void swapTask()
 {
-	//assert("SWAP Error" && !superMode);		// assert user mode
+	assert("SWAP Error" && !superMode);		// assert user mode
     if (superMode){
         printf(":(");
         return;
