@@ -263,6 +263,18 @@ static void keyboard_isr()
                     break;
                 }
                     
+                case 0x14:						// ^T
+                {
+                    P2_listTasks(1,0);
+                    break;
+                }
+                case 0x11:
+                case 0x10:						// ^P
+                {
+                    listQueues();
+                    break;
+                }
+                    
                 case 0x12:						// ^R
                 {
                     

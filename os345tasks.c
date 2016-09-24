@@ -90,6 +90,8 @@ int createTask(char* name,						// task name
 
 			// Each task must have its own stack and stack pointer.
 			tcb[tid].stack = malloc(STACK_SIZE * sizeof(int));
+            
+            addToReadyQueue(tid,priority);
 
 			// ?? may require inserting task into "ready" queue
 

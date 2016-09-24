@@ -105,6 +105,8 @@ int main(int argc, char* argv[])
 	// save context for restart (a system reset would return here...)
 	int resetCode = setjmp(reset_context);
 	superMode = TRUE;						// supervisor mode
+    
+    
 
 	switch (resetCode)
 	{
@@ -184,7 +186,6 @@ int main(int argc, char* argv[])
 //
 static int scheduler()
 {
-	int nextTask;
 	// ?? Design and implement a scheduler that will select the next highest
 	// ?? priority ready task to pass to the system dispatcher.
 
@@ -200,16 +201,25 @@ static int scheduler()
 	// ?? priorities, clean up dead tasks, and handle semaphores appropriately.
 
 	// schedule next task
-	nextTask = ++curTask;
+    TaskID topTask = checkReadyQueue();
+    if (topTask.tid == curTask && tcb[curTask].state == S_RUNNING){
+        printf("Check to make sure we don't need to switch\n");
+        TaskID readyTask = takeFromReadyQueue();
+        addToReadyQueue(readyTask.tid, readyTask.priority);
+        topTask = checkReadyQueue();
+        listQueues();
+    }
+    
+    
+    if (topTask.priority == 0) return -2;
+    
+    if (tcb[topTask.tid].signal & mySIGSTOP) return -1;
+    if (topTask.tid != curTask) printf("Starting task tid: %d\n",topTask.tid);
+  
+    
+    curTask = topTask.tid;
 
-	// mask sure nextTask is valid
-	while (!tcb[nextTask].name)
-	{
-		if (++nextTask >= MAX_TASKS) nextTask = 0;
-	}
-	if (tcb[nextTask].signal & mySIGSTOP) return -1;
-
-	return nextTask;
+	return curTask;
 } // end scheduler
 
 
@@ -312,6 +322,7 @@ int unblock_task(Semaphore* s){
     if (capturedTask.priority == 0 || tcb[capturedTask.tid].state != S_BLOCKED)
         return 0;
     
+    
     return addToReadyQueue(capturedTask.tid, capturedTask.priority);
 }
 
@@ -334,7 +345,7 @@ int block_task(int tid, Semaphore* s){
     TaskQueue* queuePointerPrev = ReadyQueue;
     
     if (queuePointer == 0){
-        return 0;
+        return addToBlockedQueue(s, tid, tcb[tid].priority);
     }
     
     while(queuePointer != 0 && queuePointer->id.tid != tid){
@@ -343,13 +354,14 @@ int block_task(int tid, Semaphore* s){
     }
     
     TaskID capturedTask;
+    
     if (queuePointerPrev != 0 && queuePointerPrev == ReadyQueue && queuePointerPrev->id.tid == tid){
-        ReadyQueue = 0;
+        ReadyQueue = queuePointerPrev->nextTask;
         capturedTask = queuePointerPrev->id;
         free(queuePointerPrev);
         
     }
-    else if (queuePointer != 0){
+    else if (queuePointer != 0 && queuePointer->id.tid == tid){
         queuePointerPrev->nextTask = queuePointer->nextTask;
         capturedTask = queuePointer->id;
         free(queuePointer);
@@ -357,7 +369,6 @@ int block_task(int tid, Semaphore* s){
     else{
         return 0;
     }
-    
     
     return addToBlockedQueue(s, capturedTask.tid, capturedTask.priority);
     
@@ -381,8 +392,12 @@ int addToReadyQueue(TID tid, int prority){
     newtq->id.tid = tid;
     newtq->nextTask = 0;
     
+    
+    
     if (queuePointer == 0){
         ReadyQueue = newtq;
+        if (tcb[tid].state != S_NEW)
+            tcb[tid].state = S_READY;
         return 1;
     }
     
@@ -395,12 +410,14 @@ int addToReadyQueue(TID tid, int prority){
         queuePointerPrev = queuePointer;
         queuePointer = queuePointer -> nextTask;
     }
-    
+    //listQueues();
     //Add the task
     queuePointerPrev->nextTask = newtq;
     newtq->nextTask = queuePointer;
+    //listQueues();
+    if (tcb[tid].state != S_NEW)
+        tcb[tid].state = S_READY;
     return 1;
-    
     
 }
 
@@ -418,14 +435,30 @@ TaskID takeFromReadyQueue(){
     
     TaskQueue* newTask = ReadyQueue;
     
-    if (newTask->id.priority != 0){
+    if (newTask != 0 && newTask->id.priority != 0){
         capturedTask = newTask->id;
         ReadyQueue = newTask->nextTask;
+        
         free(newTask);
     }
     
     return capturedTask;
 }
+
+TaskID checkReadyQueue(){
+    TaskID capturedTask;
+    capturedTask.tid = 0;
+    capturedTask.priority = 0;
+    
+    TaskQueue* newTask = ReadyQueue;
+    
+    if (newTask != 0 && newTask->id.priority != 0){
+        capturedTask = newTask->id;
+    }
+    
+    return capturedTask;
+}
+
 
 // **********************************************************************
 // **********************************************************************
@@ -447,12 +480,16 @@ int addToBlockedQueue(Semaphore* s, TID tid, int prority){
     
     if (queuePointer == 0){
         s->tasksWaiting = newtq;
+        tcb[tid].event = s;
+        tcb[tid].state = S_BLOCKED;
         return 1;
     }
     
     while(queuePointer != 0 && queuePointer->id.priority >= prority){
         //if the task is already in the semaphore's queue
         if (queuePointer->id.tid == tid){
+            tcb[tid].state = S_BLOCKED;
+            printf("Already in blocked queue!");
             free(newtq);
             return 0;
         }
@@ -463,6 +500,8 @@ int addToBlockedQueue(Semaphore* s, TID tid, int prority){
     //Add the task
     queuePointerPrev->nextTask = newtq;
     newtq->nextTask = queuePointer;
+    tcb[tid].event = s;
+    tcb[tid].state = S_BLOCKED;
     return 1;
 }
 
@@ -480,10 +519,11 @@ TaskID takeFromBlockedQueue(Semaphore* s){
     
     TaskQueue* newTask = s->tasksWaiting;
     
-    if (newTask->id.priority != 0){
+    if (newTask != 0 && newTask->id.priority != 0){
         capturedTask = newTask->id;
         s->tasksWaiting = newTask->nextTask;
         free(newTask);
+        tcb[capturedTask.tid].event = 0;
     }
 
     
@@ -491,6 +531,21 @@ TaskID takeFromBlockedQueue(Semaphore* s){
 }
 
 
+void listQueues(){
+    printf("\nReadyQueue: ");
+    if (ReadyQueue == 0) printf("empty\n");
+    else{
+        TaskQueue* tq = ReadyQueue;
+        int position = 0;
+        while (tq){
+            printf("%d\t:%s\tTID: %d Pri:%d\n",position, tcb[tq->id.tid].name,tq->id.tid, tq->id.priority);
+            tq = tq->nextTask;
+            position++;
+            if (position >= MAX_TASKS) assert("Too many waiting tasks" && 0);
+        }
+        printf("Done.\n");
+    }
+}
 
 // **********************************************************************
 // **********************************************************************
@@ -503,7 +558,11 @@ TaskID takeFromBlockedQueue(Semaphore* s){
 
 void swapTask()
 {
-	assert("SWAP Error" && !superMode);		// assert user mode
+	//assert("SWAP Error" && !superMode);		// assert user mode
+    if (superMode){
+        printf(":(");
+        return;
+    }
 
 	// increment swap cycle counter
 	swapCount++;
@@ -558,6 +617,7 @@ static int initOS()
 	initLC3Memory(LC3_MEM_FRAME, 0xF800>>6);
 
 	// ?? initialize all execution queues
+    ReadyQueue = 0;
 
 	return 0;
 } // end initOS

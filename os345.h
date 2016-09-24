@@ -156,9 +156,11 @@ int semTryLock(Semaphore*);
 int block_task(int tid, Semaphore* s);
 int unblock_task(Semaphore* s);
 int addToReadyQueue(TID tid, int prority);
+void listQueues();
 TaskID takeFromReadyQueue();
 int addToBlockedQueue(Semaphore* s, TID tid, int prority);
 TaskID takeFromBlockedQueue(Semaphore* s);
+TaskID checkReadyQueue();
 
 
 // ***********************************************************************
