@@ -87,7 +87,7 @@ clock_t myClkTime;
 clock_t myOldClkTime;
 
 //Ready Queues
-static TaskQueue ReadyQueue;
+static TaskQueue* ReadyQueue;
 
 
 // **********************************************************************
@@ -333,7 +333,34 @@ int block_task(int tid, Semaphore* s){
 // 1. Moves the task from the ready list to the blocked list
 // 2. Return 0 if it is already blocked
 
-void addToReadyQueue(TID tid, int prority){
+int addToReadyQueue(TID tid, int prority){
+    TaskQueue* queuePointer = ReadyQueue;
+    TaskQueue* queuePointerPrev = ReadyQueue;
+    TaskQueue* newtq = malloc(sizeof(TaskQueue));
+    newtq->id.priority = prority;
+    newtq->id.tid = tid;
+    newtq->nextTask = 0;
+    
+    if (queuePointer == 0){
+        ReadyQueue = newtq;
+        return 1;
+    }
+    
+    while(queuePointer != 0 && queuePointer->id.priority >= prority){
+        //if the task is already in the ready queue
+        if (queuePointer->id.tid == tid){
+            free(newtq);
+            return 0;
+        }
+        queuePointerPrev = queuePointer;
+        queuePointer = queuePointer -> nextTask;
+    }
+    
+    //Add the task
+    queuePointerPrev->nextTask = newtq;
+    newtq->nextTask = queuePointer;
+    return 1;
+    
     
 }
 
@@ -344,8 +371,12 @@ void addToReadyQueue(TID tid, int prority){
 // 1. Moves the task from the ready list to the blocked list
 // 2. Return 0 if it is already blocked
 
-TaskQueue* takeFromReadyQueue(){
-    return 0;
+TaskID takeFromReadyQueue(){
+    TaskID capturedTask;
+    capturedTask.tid = 0;
+    capturedTask.priority = 0;
+    
+    return capturedTask;
 }
 
 // **********************************************************************
@@ -355,8 +386,33 @@ TaskQueue* takeFromReadyQueue(){
 // 1. Moves the task from the ready list to the blocked list
 // 2. Return 0 if it is already blocked
 
-void addToBlockedQueue(Semaphore* s, TID tid, int prority){
+int addToBlockedQueue(Semaphore* s, TID tid, int prority){
+    TaskQueue* queuePointer = s->tasksWaiting;
+    TaskQueue* queuePointerPrev = queuePointer;
+    TaskQueue* newtq = malloc(sizeof(TaskQueue));
+    newtq->id.priority = prority;
+    newtq->id.tid = tid;
+    newtq->nextTask = 0;
     
+    if (queuePointer == 0){
+        s->tasksWaiting = newtq;
+        return 1;
+    }
+    
+    while(queuePointer != 0 && queuePointer->id.priority >= prority){
+        //if the task is already in the semaphore's queue
+        if (queuePointer->id.tid == tid){
+            free(newtq);
+            return 0;
+        }
+        queuePointerPrev = queuePointer;
+        queuePointer = queuePointer -> nextTask;
+    }
+    
+    //Add the task
+    queuePointerPrev->nextTask = newtq;
+    newtq->nextTask = queuePointer;
+    return 1;
 }
 
 // **********************************************************************
@@ -366,8 +422,12 @@ void addToBlockedQueue(Semaphore* s, TID tid, int prority){
 // 1. Moves the task from the ready list to the blocked list
 // 2. Return 0 if it is already blocked
 
-TaskQueue* takeFromBlockedQueue(Semaphore* s){
-    return 0;
+TaskID takeFromBlockedQueue(Semaphore* s){
+    TaskID capturedTask;
+    capturedTask.tid = 0;
+    capturedTask.priority = 0;
+    
+    return capturedTask;
 }
 
 
@@ -465,11 +525,10 @@ void powerDown(int code)
 
 	// free ready queue
 	// TODO: release the queues
-    TaskQueue* releasingTask;
-    while((releasingTask = takeFromReadyQueue())){
-        free(releasingTask);
-    }
-    //free(rq);
+    TaskID releasingTask;
+    releasingTask.priority = 1;
+    while((releasingTask = takeFromReadyQueue()).priority);
+    
 
 	// ?? release any other system resources
 	// ?? deltaclock (project 3)

@@ -70,12 +70,18 @@ enum {PAGE_INIT, PAGE_READ, PAGE_OLD_WRITE, PAGE_NEW_WRITE,
 typedef int bool;						// boolean value
 typedef int TID;						// task id
 
+typedef struct taskID{
+    TID tid;
+    int priority;
+} TaskID;
+
+
 typedef struct taskQueue			// semaphore
 {
     struct taskQueue* nextTask;		// semaphore link
-    TID tid;
-    int prority;
+    TaskID id;
 } TaskQueue;
+
 
 // semaphore
 typedef struct semaphore			// semaphore
@@ -149,10 +155,10 @@ int semTryLock(Semaphore*);
 
 int block_task(int tid, Semaphore* s);
 int unblock_task(Semaphore* s);
-void addToReadyQueue(TID tid, int prority);
-TaskQueue* takeFromReadyQueue();
-void addToBlockedQueue(Semaphore* s, TID tid, int prority);
-TaskQueue* takeFromBlockedQueue(Semaphore* s);
+int addToReadyQueue(TID tid, int prority);
+TaskID takeFromReadyQueue();
+int addToBlockedQueue(Semaphore* s, TID tid, int prority);
+TaskID takeFromBlockedQueue(Semaphore* s);
 
 
 // ***********************************************************************
