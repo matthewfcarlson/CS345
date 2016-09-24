@@ -304,7 +304,15 @@ static int dispatcher()
 // 3. Return 0 if unsuccessful
 
 int unblock_task(Semaphore* s){
-    return 0;
+    
+    //get the first task ready to unblock
+    TaskID capturedTask = takeFromBlockedQueue(s);
+    
+    //check to make sure we are in the running or ready state
+    if (capturedTask.priority == 0 || tcb[capturedTask.tid].state != S_BLOCKED)
+        return 0;
+    
+    return addToReadyQueue(capturedTask.tid, capturedTask.priority);
 }
 
 
@@ -319,11 +327,40 @@ int unblock_task(Semaphore* s){
 
 int block_task(int tid, Semaphore* s){
     //check to make sure we are in the running or ready state
-    if (tcb[curTask].state != S_RUNNING || tcb[curTask].state != S_READY)
+    if (tcb[tid].state != S_RUNNING && tcb[tid].state != S_READY)
         return 0;
     
+    TaskQueue* queuePointer = ReadyQueue;
+    TaskQueue* queuePointerPrev = ReadyQueue;
     
-    return 0;
+    if (queuePointer == 0){
+        return 0;
+    }
+    
+    while(queuePointer != 0 && queuePointer->id.tid != tid){
+        queuePointerPrev = queuePointer;
+        queuePointer = queuePointer -> nextTask;
+    }
+    
+    TaskID capturedTask;
+    if (queuePointerPrev != 0 && queuePointerPrev == ReadyQueue && queuePointerPrev->id.tid == tid){
+        ReadyQueue = 0;
+        capturedTask = queuePointerPrev->id;
+        free(queuePointerPrev);
+        
+    }
+    else if (queuePointer != 0){
+        queuePointerPrev->nextTask = queuePointer->nextTask;
+        capturedTask = queuePointer->id;
+        free(queuePointer);
+    }
+    else{
+        return 0;
+    }
+    
+    
+    return addToBlockedQueue(s, capturedTask.tid, capturedTask.priority);
+    
 }
 
 // **********************************************************************
@@ -334,6 +371,9 @@ int block_task(int tid, Semaphore* s){
 // 2. Return 0 if it is already blocked
 
 int addToReadyQueue(TID tid, int prority){
+    
+    if (prority == 0) return 0;
+    
     TaskQueue* queuePointer = ReadyQueue;
     TaskQueue* queuePointerPrev = ReadyQueue;
     TaskQueue* newtq = malloc(sizeof(TaskQueue));
@@ -395,6 +435,9 @@ TaskID takeFromReadyQueue(){
 // 2. Return 0 if it is already blocked
 
 int addToBlockedQueue(Semaphore* s, TID tid, int prority){
+    
+    if (prority == 0) return 0;
+    
     TaskQueue* queuePointer = s->tasksWaiting;
     TaskQueue* queuePointerPrev = queuePointer;
     TaskQueue* newtq = malloc(sizeof(TaskQueue));
