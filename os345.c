@@ -376,6 +376,14 @@ TaskID takeFromReadyQueue(){
     capturedTask.tid = 0;
     capturedTask.priority = 0;
     
+    TaskQueue* newTask = ReadyQueue;
+    
+    if (newTask->id.priority != 0){
+        capturedTask = newTask->id;
+        ReadyQueue = newTask->nextTask;
+        free(newTask);
+    }
+    
     return capturedTask;
 }
 
@@ -420,12 +428,21 @@ int addToBlockedQueue(Semaphore* s, TID tid, int prority){
 // Blocks a task on a semaphore
 
 // 1. Moves the task from the ready list to the blocked list
-// 2. Return 0 if it is already blocked
+// 2. Return 0 in prority if it is already blocked
 
 TaskID takeFromBlockedQueue(Semaphore* s){
     TaskID capturedTask;
     capturedTask.tid = 0;
     capturedTask.priority = 0;
+    
+    TaskQueue* newTask = s->tasksWaiting;
+    
+    if (newTask->id.priority != 0){
+        capturedTask = newTask->id;
+        s->tasksWaiting = newTask->nextTask;
+        free(newTask);
+    }
+
     
     return capturedTask;
 }
