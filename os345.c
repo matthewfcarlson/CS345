@@ -629,6 +629,7 @@ static int initOS()
 	// capture current time
 	lastPollClock = clock();			// last pollClock
 	time(&oldTime1);
+    time(&oldTime10);
 
     // initialize lc-3 memory
 	initLC3Memory(LC3_MEM_FRAME, 0xF800>>6);

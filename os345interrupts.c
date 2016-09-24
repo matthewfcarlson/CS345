@@ -378,8 +378,9 @@ static void timer_isr()
     if ((currentTime - oldTime10) >= 10)
     {
         // signal 10 second
+        //printf("10 seconds at %d\n",oldTime10);
         semSignal(tics10sec);
-        oldTime10 += 10;
+        oldTime10 = currentTime;
     }
 
 
