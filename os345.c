@@ -85,6 +85,9 @@ time_t oldTime1;					// old 1sec time
 time_t oldTime10;					// old 1sec time
 clock_t myClkTime;
 clock_t myOldClkTime;
+char printBuffer[128];
+
+
 
 //Ready Queues
 TaskQueue* ReadyQueue;

@@ -61,6 +61,7 @@ extern int pollClock;				// current clock()
 extern int lastPollClock;			// last pollClock
 
 extern int superMode;						// system mode
+extern char printBuffer[];
 
 // Globals
 const int NUM_COMMANDS_TO_TRACK = 10;
@@ -91,6 +92,8 @@ void pollInterrupts(void)
 
 	// timer interrupt
 	timer_isr();
+    
+    //printf("%s",printBuffer);
 
 	return;
 } // end pollInterrupts

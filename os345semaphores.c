@@ -66,8 +66,7 @@ void semSignal(Semaphore* s)
         s->state += 1;
 
         //unblock a task
-        if (unblock_task(s))
-            s->state -= 1;
+        unblock_task(s);
         
         
         if (!superMode) swapTask();
@@ -275,6 +274,7 @@ bool deleteSemaphore(Semaphore** semaphore)
 		sem = (Semaphore*)sem->semLink;
 	}
 
+    
 	// could not delete
 	return FALSE;
 } // end deleteSemaphore

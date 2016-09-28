@@ -91,9 +91,9 @@ int createTask(char* name,						// task name
 			// Each task must have its own stack and stack pointer.
 			tcb[tid].stack = malloc(STACK_SIZE * sizeof(int));
             
+            // ?? may require inserting task into "ready" queue
             addToReadyQueue(tid,priority);
 
-			// ?? may require inserting task into "ready" queue
 
 			if (tid) swapTask();				// do context switch (if not cli)
 			return tid;							// return tcb index (curTask)
@@ -146,8 +146,13 @@ static void exitTask(int taskId)
     if (s){
         // 2. if blocked, unblock (handle semaphore)
         TaskID tid = removeFromBlockedQueue(s, taskId, tcb[taskId].priority);
+        
         //add to ready queue
-        if (tid.priority != 0) addToReadyQueue(taskId, tcb[taskId].priority);
+        if (tid.priority != 0) {
+            addToReadyQueue(taskId, tcb[taskId].priority);
+            //if it's a counter semaphonre, we need to increment it
+            if (s->type != 0) s->state++;
+        }
     }
 	
     // 3. set state to exit
@@ -166,20 +171,23 @@ int sysKillTask(int taskId)
 	Semaphore** semLink = &semaphoreList;
 
 	// assert that you are not pulling the rug out from under yourself!
-	//printf("\nKill Task %d:%s", taskId, tcb[taskId].name);
+	printf("\nKill Task %d:%s", taskId, tcb[taskId].name);
     assert("sysKillTask Error" && tcb[taskId].name && superMode);
 	
 
 	// signal task terminated
 	semSignal(taskSems[taskId]);
 
-	// look for any semaphores created by this task
+	//delete task semaphore
+    deleteSemaphore(&taskSems[taskId]);
+    // look for any semaphores created by this task
 	while((sem = *semLink))
 	{
 		if(sem->taskNum == taskId)
 		{
 			// semaphore found, delete from list, release memory
-			deleteSemaphore(semLink);
+			if(!deleteSemaphore(semLink))
+                printf("Could not delete semaphores\n");
 		}
 		else
 		{

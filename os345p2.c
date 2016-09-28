@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <time.h>
 #include "os345.h"
+#include <stdarg.h>
 #include "os345signals.h"
 
 #define my_printf	printf
@@ -35,6 +36,7 @@ extern Semaphore* tics10sec;
 extern TaskQueue* ReadyQueue;
 
 extern TCB tcb[];								// task control block
+extern char printBuffer[];
 extern int curTask;							// current task #
 extern Semaphore* semaphoreList;			// linked list of active semaphores
 extern jmp_buf reset_context;				// context of kernel stack
@@ -239,7 +241,7 @@ void sem_signal(Semaphore* sem)		// signal
 {
 	if (sem)
 	{
-		printf("\nSignal %s", sem->name);
+		my_printf("\nSignal %s", sem->name);
 		SEM_SIGNAL(sem);
 	}
 	else my_printf("\nSemaphore not defined!");
@@ -331,3 +333,18 @@ char* myTime(char* svtime)
 	svtime[strlen(svtime)-1] = 0;		// eliminate nl at end
 	return svtime;
 } // end myTime
+
+
+void my_printf_todo(char* fmt, ...)
+{
+    va_list arg_ptr;
+    
+    char* s = printBuffer;
+    
+    va_start(arg_ptr, fmt);
+    vsprintf(printBuffer, fmt, arg_ptr);
+    
+    while (*s) putchar(*s++);
+    
+    va_end(arg_ptr);
+} // end my_printf
