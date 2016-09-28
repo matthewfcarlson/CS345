@@ -118,6 +118,7 @@ int killTask(int taskId)
 	{
 		if (taskId < 0)			// kill all tasks
 		{
+            //printf("Kill All Tasks %d\n",taskId);
 			int tid;
 			for (tid = 1; tid < MAX_TASKS; tid++)
 			{
@@ -126,6 +127,7 @@ int killTask(int taskId)
 		}
 		else
 		{
+            //printf("KillTask %d\n",taskId);
 			// terminate individual task
 			if (!tcb[taskId].name) return 1;
 			exitTask(taskId);	// kill individual task
@@ -140,11 +142,15 @@ static void exitTask(int taskId)
 	assert("exitTaskError" && tcb[taskId].name);
 
 	// 1. find task in system queue
-	// 2. if blocked, unblock (handle semaphore)
-	// 3. set state to exit
-
-	// ?? add code here
-
+    Semaphore*s = tcb[taskId].event;
+    if (s){
+        // 2. if blocked, unblock (handle semaphore)
+        TaskID tid = removeFromBlockedQueue(s, taskId, tcb[taskId].priority);
+        //add to ready queue
+        if (tid.priority != 0) addToReadyQueue(taskId, tcb[taskId].priority);
+    }
+	
+    // 3. set state to exit
 	tcb[taskId].state = S_EXIT;			// EXIT task state
 	return;
 } // end exitTask
@@ -160,8 +166,9 @@ int sysKillTask(int taskId)
 	Semaphore** semLink = &semaphoreList;
 
 	// assert that you are not pulling the rug out from under yourself!
-	assert("sysKillTask Error" && tcb[taskId].name && superMode);
-	printf("\nKill Task %s", tcb[taskId].name);
+	//printf("\nKill Task %d:%s", taskId, tcb[taskId].name);
+    assert("sysKillTask Error" && tcb[taskId].name && superMode);
+	
 
 	// signal task terminated
 	semSignal(taskSems[taskId]);
@@ -182,6 +189,10 @@ int sysKillTask(int taskId)
 	}
 
 	// ?? delete task from system queues
+    tcb[taskId].state = S_READY;
+    block_task(taskId,0);
+    tcb[taskId].state = S_EXIT;
+    //printf("Remove from Ready Queue %d\n",result);
 
 	tcb[taskId].name = 0;			// release tcb slot
 	return 0;

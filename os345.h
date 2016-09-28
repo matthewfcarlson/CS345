@@ -161,6 +161,7 @@ TaskID takeFromReadyQueue();
 int addToBlockedQueue(Semaphore* s, TID tid, int prority);
 TaskID takeFromBlockedQueue(Semaphore* s);
 TaskID checkReadyQueue();
+TaskID removeFromBlockedQueue(Semaphore* s,TID tid, int prority);
 
 
 // ***********************************************************************

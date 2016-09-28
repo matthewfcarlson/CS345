@@ -31,6 +31,8 @@
 // project 2 variables
 static Semaphore* s1Sem;					// task 1 semaphore
 static Semaphore* s2Sem;					// task 2 semaphore
+extern Semaphore* tics10sec;
+extern TaskQueue* ReadyQueue;
 
 extern TCB tcb[];								// task control block
 extern int curTask;							// current task #
@@ -42,6 +44,7 @@ extern jmp_buf reset_context;				// context of kernel stack
 
 int signalTask(int, char**);
 int ImAliveTask(int, char**);
+int TenSecTask(int, char**);
 
 // ***********************************************************************
 // ***********************************************************************
@@ -54,6 +57,13 @@ int P2_project2(int argc, char* argv[])
 
 	printf("\nStarting Project 2");
 	SWAP;
+    for (int i=0;i<9;i++){
+        createTask("TenSec",				// task name
+                   TenSecTask,			// task
+                   HIGH_PRIORITY,			// task priority
+                   1,							// task argc
+                   aliveArgv);				// task argument pointers
+    }
 
 	// start tasks looking for sTask semaphores
 	createTask("signal1",				// task name
@@ -79,10 +89,25 @@ int P2_project2(int argc, char* argv[])
 					LOW_PRIORITY,			// task priority
 					2,							// task argc
 					aliveArgv);				// task argument pointers
-	return 0;
+
+    
+    return 0;
 } // end P2_project2
 
-
+void print_task(int i){
+    if (tcb[i].name)
+    {
+        printf("\n%4d/%-4d%20s%4d  ", i, tcb[i].parent,
+               tcb[i].name, tcb[i].priority);
+        if (tcb[i].signal & mySIGSTOP) my_printf("Paused");
+        else if (tcb[i].state == S_NEW) my_printf("New");
+        else if (tcb[i].state == S_READY) my_printf("Ready");
+        else if (tcb[i].state == S_RUNNING) my_printf("Running");
+        else if (tcb[i].state == S_BLOCKED) my_printf("Blocked    %s",
+                                                      tcb[i].event->name);
+        else if (tcb[i].state == S_EXIT) my_printf("Exiting");
+    }
+}
 
 // ***********************************************************************
 // ***********************************************************************
@@ -90,27 +115,46 @@ int P2_project2(int argc, char* argv[])
 int P2_listTasks(int argc, char* argv[])
 {
 	int i;
+    int position = 0;
+    TaskQueue* tq;
 
-//	?? 1) List all tasks in all queues
+    printf("\nReady Queue:");
+    if (ReadyQueue == 0) printf(" empty");
+    else{
+        tq = ReadyQueue;
+        
+        while (tq){
+            print_task(tq->id.tid);
+            //printf("%d\t:%s\tTID: %d Pri:%d\n",position, tcb[tq->id.tid].name,tq->id.tid, tq->id.priority);
+            tq = tq->nextTask;
+            position++;
+            if (position >= MAX_TASKS) assert("Too many waiting tasks" && 0);
+            swapTask();
+        }
+        
+    }
+    
+    Semaphore* sem = semaphoreList;
+    while(sem)
+    {
+        if (sem->tasksWaiting != 0){
+            printf("\n%s:", sem->name);
+            tq = sem->tasksWaiting;
+            position = 0;
+            while (tq){
+                print_task(tq->id.tid);
+                tq = tq->nextTask;
+                position++;
+                if (position >= MAX_TASKS) assert("Too many waiting tasks" && 0);
+                swapTask();
+            }
+        }
+        sem = (Semaphore*)sem->semLink;
+    }
 // ?? 2) Show the task stake (new, running, blocked, ready)
 // ?? 3) If blocked, indicate which semaphore
 
-	for (i=0; i<MAX_TASKS; i++)
-	{
-		if (tcb[i].name)
-		{
-			printf("\n%4d/%-4d%20s%4d  ", i, tcb[i].parent,
-		  				tcb[i].name, tcb[i].priority);
-			if (tcb[i].signal & mySIGSTOP) my_printf("Paused");
-			else if (tcb[i].state == S_NEW) my_printf("New");
-			else if (tcb[i].state == S_READY) my_printf("Ready");
-			else if (tcb[i].state == S_RUNNING) my_printf("Running");
-			else if (tcb[i].state == S_BLOCKED) my_printf("Blocked    %s",
-		  				tcb[i].event->name);
-			else if (tcb[i].state == S_EXIT) my_printf("Exiting");
-			swapTask();
-		}
-	}
+	
 	return 0;
 } // end P2_listTasks
 
@@ -258,7 +302,21 @@ int ImAliveTask(int argc, char* argv[])
 	return 0;						// terminate task
 } // end ImAliveTask
 
-
+// ***********************************************************************
+// ***********************************************************************
+// I'm alive task
+int TenSecTask(int argc, char* argv[])
+{
+    time_t cTime;
+    
+    while (1)
+    {
+        SEM_WAIT(tics10sec);
+        time(&cTime);						// read current time
+        printf("\n(%d) Ten Second Timer at %s", curTask, ctime(&cTime));
+    }
+    return 0;						// terminate task
+} // end ImAliveTask
 
 // **********************************************************************
 // **********************************************************************

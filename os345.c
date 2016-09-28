@@ -87,7 +87,7 @@ clock_t myClkTime;
 clock_t myOldClkTime;
 
 //Ready Queues
-static TaskQueue* ReadyQueue;
+TaskQueue* ReadyQueue;
 
 
 // **********************************************************************
@@ -281,7 +281,7 @@ static int dispatcher()
 				superMode = TRUE;					// supervisor mode
 				break;								// return from task
 			}
-			if (signals()) break;
+			if (signals()) break;                   // if we get a 1 here, we aren't supposed to be scheduled
 			longjmp(tcb[curTask].context, 3); 		// restore task context
 		}
 
@@ -293,12 +293,9 @@ static int dispatcher()
 		case S_EXIT:
 		{
 			if (curTask == 0) return -1;			// if CLI, then quit scheduler
-            int oldSuperMode = superMode;
-            superMode = TRUE;
-			// release resources and kill task
+            // release resources and kill task
 			sysKillTask(curTask);					// kill current task
-            superMode = oldSuperMode;
-			break;
+            break;
 		}
 
 		default:
@@ -375,10 +372,11 @@ int block_task(int tid, Semaphore* s){
     else{
         return 0;
     }
-    
+    if (s == 0) return -1;
     return addToBlockedQueue(s, capturedTask.tid, capturedTask.priority);
     
 }
+
 
 // **********************************************************************
 // **********************************************************************
@@ -543,6 +541,27 @@ TaskID takeFromBlockedQueue(Semaphore* s){
         tcb[capturedTask.tid].event = 0;
     }
 
+    
+    return capturedTask;
+}
+
+TaskID removeFromBlockedQueue(Semaphore* s,TID tid, int prority){
+    TaskID capturedTask;
+    capturedTask.tid = 0;
+    capturedTask.priority = 0;
+    
+    TaskQueue* newTask = s->tasksWaiting;
+    TaskQueue* prevTask = newTask;
+    
+    while (newTask != 0 && newTask->id.tid != tid){
+        prevTask = newTask;
+        newTask = newTask->nextTask;
+    }
+    if (newTask != 0){
+        capturedTask = newTask->id;
+        if (prevTask != newTask)
+            prevTask->nextTask = newTask->nextTask;
+    }
     
     return capturedTask;
 }

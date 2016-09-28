@@ -51,7 +51,6 @@ int P1_args(int argc, char* argv[]);
 
 void mySigIntHandler()
 {
-	//printf("SIG INT on %d",curTask);
     sigSignal(-1, mySIGTERM);
 }
 

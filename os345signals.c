@@ -66,6 +66,7 @@ int signals(void)
         }
         
         if (tcb[curTask].signal & mySIGSTOP){
+            
             return 1;
         }
     }
