@@ -140,7 +140,7 @@ int P2_listTasks(int argc, char* argv[])
         if (sem->tasksWaiting != 0){
             printf("\n%s:", sem->name);
             tq = sem->tasksWaiting;
-            position = 0;
+            //position = 0;
             while (tq){
                 print_task(tq->id.tid);
                 tq = tq->nextTask;
