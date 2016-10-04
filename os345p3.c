@@ -22,6 +22,8 @@
 #include <setjmp.h>
 #include <time.h>
 #include <assert.h>
+#include <time.h>
+#include <stdlib.h>
 #include "os345.h"
 #include "os345park.h"
 
@@ -34,6 +36,8 @@ extern Semaphore* parkMutex;						// protect park access
 extern Semaphore* fillSeat[NUM_CARS];			// (signal) seat ready to fill
 extern Semaphore* seatFilled[NUM_CARS];		// (wait) passenger seated
 extern Semaphore* rideOver[NUM_CARS];			// (signal) ride over
+extern Semaphore* deltaClockModify;
+extern Semaphore* taskSems[MAX_TASKS];		// task semaphore
 
 typedef struct delta_timer{
     Semaphore* trigger;
@@ -42,8 +46,15 @@ typedef struct delta_timer{
 } DeltaTimer;
 
 DeltaTimer* delta_timer = 0;
-
+Semaphore* tickets;
+Semaphore* parkOccupancy;
+Semaphore* getTicketMutex;
+Semaphore* needTicket;
+Semaphore* wakeupDriver;
+Semaphore* ticketReady;
+Semaphore* buyTicket;
 static TID timeTaskID;
+extern int curTask;
 
 // ***********************************************************************
 // project 3 functions and tasks
@@ -54,14 +65,146 @@ int dcMonitorTask(int argc, char* argv[]);
 int timeTask(int argc, char* argv[]);
 void insertDeltaClock(int ticks, Semaphore* event);
 void tickDeltaClock();
+int JPcarTask(int argc, char* argv[]);
+typedef enum parkField{enterPark} ParkAction;
+void modifyPark(ParkAction field,int value);
 
 // ***********************************************************************
+// ********************************************************************************************
+int JPvisitorTask(int argc, char* argv[]){
+    int visID = atoi(argv[1]);
+    myPark.numOutsidePark++;
+    while(1){
+        insertDeltaClock(rand() % 100 + 10, taskSems[curTask]);SWAP;
+        SEM_WAIT(taskSems[curTask]);SWAP;
+        if (semTryLock(parkOccupancy)){
+            SWAP;
+            //Try and get a ticket
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.numInPark += 1;SWAP;
+            myPark.numOutsidePark -= 1;SWAP;
+            myPark.numInTicketLine++;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            // only 1 visitor at a time requests a ticket
+            SEM_WAIT(getTicketMutex);		SWAP;
+            {
+                //printf("Player %d is buying a ticket\n",visID);
+                // signal need ticket (produce, put hand up)
+                SEM_SIGNAL(needTicket);		SWAP;
+                
+                // wakeup a driver (produce)
+                SEM_SIGNAL(wakeupDriver);	SWAP;
+                
+                // wait for driver to obtain ticket (consume)
+                SEM_WAIT(ticketReady);		SWAP;
+                
+                // put hand down (consume, driver awake, ticket ready)
+                //SEM_WAIT(needTicket);		SWAP;
+                
+                // buy ticket (produce, signal driver ticket taken)
+                SEM_SIGNAL(buyTicket);		SWAP;
+                SEM_WAIT(parkMutex);SWAP;
+                myPark.numInTicketLine--;SWAP;
+                myPark.numInCarLine++;SWAP;
+                SEM_SIGNAL(parkMutex);SWAP;
+            }
+            // done (produce)
+            SEM_SIGNAL(getTicketMutex);		SWAP;
+           
+            
+           
+           
+            while(1) SWAP;
+            return 0;
+        }
+        //printf("VISITOR %d is WAITING\n",visID);
+        SWAP;
+        
+    }
+    return 0;
+}
+void modifyPark(ParkAction field,int value){
+    SEM_WAIT(parkMutex);
+    switch(field){
+        case enterPark:
+            myPark.numInPark += 1;
+            myPark.numOutsidePark -= 1;
+            break;
+        
+    }
+    SEM_SIGNAL(parkMutex);
+}
+int JPdriverTask(int argc, char* argv[]){
+    int id = atoi(argv[1]) + 1;
+    while(1){
+        //wait for someone to wake up a driver
+        SEM_WAIT(wakeupDriver);SWAP;
+        //printf("WAKING UP DRIVER %d",id);
+        if (semTryLock(needTicket)){
+            //set your state
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.drivers[id] = -1;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            //wait for a ticket to be available
+            SEM_WAIT(tickets);SWAP;
+            //let the customer know
+            SEM_SIGNAL(ticketReady);
+            //wait for them to buy it
+            SEM_WAIT(buyTicket);SWAP;
+            
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.numTicketsAvailable--;SWAP;
+            myPark.drivers[id] = 0;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+        }
+        SWAP;
+
+    }
+    return 0;
+}
+// Handles the cars
+int JPcarTask(int argc, char* argv[])
+{
+    int carID = atoi(argv[1]);
+    printf("Car: %d",carID);
+    while(1){
+        SEM_WAIT(fillSeat[carID]); 		SWAP;	// wait for available seat
+        
+        //SEM_SIGNAL(getPassenger); 		SWAP;	// signal for visitor
+        //SEM_WAIT(seatTaken);	 		SWAP;	// wait for visitor to reply
+        
+        //... save passenger ride over semaphore ...
+        //SEM_SIGNAL(passengerSeated);	SWAP:	// signal visitor in seat
+        
+        // if last passenger, get driver
+        {
+            //SEM_WAIT(needDriverMutex);	SWAP;
+            
+            // wakeup attendant
+            //SEM_SIGNAL(wakeupDriver);	SWAP;
+            
+            //... save driver ride over semaphore ...
+            
+            // got driver (mutex)
+            //SEM_SIGNAL(needDriverMutex);	SWAP;
+        }
+        
+        SEM_SIGNAL(seatFilled[carID]); 	SWAP;	// signal ready for next seat
+        
+        // if car full, wait until ride over
+        //SEM_WAIT(rideOver[myID]);		SWAP;
+    }
+    return 0;
+} // end timeTask
+
 // ***********************************************************************
 // project3 command
 int P3_project3(int argc, char* argv[])
 {
 	char buf[32];
+    char buf2[32];
 	char* newArgv[2];
+    srand(time(NULL));
 
 	// start park
 	sprintf(buf, "jurassicPark");
@@ -77,26 +220,110 @@ int P3_project3(int argc, char* argv[])
 	printf("\nStart Jurassic Park...");
 
 	//?? create car, driver, and visitor tasks here
+    tickets = createSemaphore("tickets", COUNTING, MAX_TICKETS);	SWAP;
+    getTicketMutex = createSemaphore("getTickets", BINARY, 1);	SWAP;
+    needTicket = createSemaphore("needTicket", BINARY, 0);	SWAP;
+    wakeupDriver = createSemaphore("wakeupDriver", BINARY, 0);	SWAP;
+    ticketReady = createSemaphore("ticketReady", BINARY, 0);	SWAP;
+    buyTicket = createSemaphore("buyTicket", BINARY, 0);	SWAP;
+    parkOccupancy =createSemaphore("parkOccupy", COUNTING, MAX_IN_PARK);	SWAP;
+    
+    for (int i=0;i<NUM_CARS;i++){
+        sprintf(buf, "parkCar:%d",i);
+        sprintf(buf2, "%d",i);
+        newArgv[0] = buf;
+        newArgv[1] = buf2;
+        createTask( buf,				// task name
+                   JPcarTask,				// task
+                   MED_PRIORITY,				// task priority
+                   1,								// task count
+                   newArgv);					// task argument
+        SWAP;
+    }
+    for (int i=0;i<NUM_VISITORS;i++){
+        sprintf(buf, "parkVis:%d",i);
+        sprintf(buf2, "%d",i);
+        newArgv[0] = buf;
+        newArgv[1] = buf2;
+        createTask( buf,				// task name
+                   JPvisitorTask,				// task
+                   MED_PRIORITY,				// task priority
+                   1,								// task count
+                   newArgv);					// task argument
+        SWAP;
+    }
+    
+    for (int i=0;i<NUM_DRIVERS;i++){
+        sprintf(buf, "parkDriver:%d",i);
+        sprintf(buf2, "%d",i);
+        newArgv[0] = buf;
+        newArgv[1] = buf2;
+        createTask( buf,				// task name
+                   JPdriverTask,				// task
+                   MED_PRIORITY,				// task priority
+                   1,								// task count
+                   newArgv);					// task argument
+        SWAP;
+    }
 
 	return 0;
 } // end project3
 
 void tickDeltaClock(){
-    if (delta_timer == 0)
+    //We can assume we are in supermode so no need to wait
+    //SEM_WAIT(deltaClockModify);
+    if (delta_timer == 0){
         return;
+    }
     //printf("Ticking delta clock %s\n",delta_timer->trigger->name);
     delta_timer->ticks_left -= 1;
     DeltaTimer* destroy_timer;
-    while (delta_timer != 0 && delta_timer->ticks_left == 0 ){
+    while (delta_timer != 0 && delta_timer->ticks_left <= 0 ){
         SEM_SIGNAL(delta_timer->trigger);
         destroy_timer = delta_timer;
         delta_timer = delta_timer->next_timer;
         free(destroy_timer);
     }
+    
 }
 
+//removes a semaphore from the delta clock
+void deleteFromDeltaClock(Semaphore* event){
+    //TODO: Deletes from the delta clock
+    SEM_WAIT(deltaClockModify);
+    printf("TODO: Delete from delta clock for %s\n",event->name);
+    DeltaTimer* pointer = delta_timer;
+    int delta = 0;
+    while (delta_timer->trigger == event){
+        delta += delta_timer->ticks_left;
+        pointer = delta_timer;
+        delta_timer = delta_timer->next_timer;
+        free(pointer);
+    }
+    
+    pointer = delta_timer;
+    DeltaTimer* prev = pointer;
+    
+    pointer->ticks_left+= delta;
+    delta = 0;
+    while (pointer != 0){
+        if (pointer->trigger == event){
+            delta = pointer->ticks_left;
+            prev->next_timer = pointer->next_timer;
+            prev->next_timer->ticks_left += delta;
+            
+            free(pointer);
+            pointer = prev;
+        }
+        prev = pointer;
+        pointer = pointer->next_timer;
+    }
+    SEM_SIGNAL(deltaClockModify);
+}
 
+//creates a delta clock
 void insertDeltaClock(int ticks, Semaphore* event){
+    SEM_WAIT(deltaClockModify);
     DeltaTimer* new_timer = malloc(sizeof(DeltaTimer));
     //printf("\nCreating delta timer: %s at %d\n",event->name,ticks);
 
@@ -104,17 +331,21 @@ void insertDeltaClock(int ticks, Semaphore* event){
     new_timer->ticks_left = ticks;
     new_timer->trigger = event;
     
+    //if we have an empty list
     if (delta_timer == 0){
         delta_timer = new_timer;
+        SEM_SIGNAL(deltaClockModify);
         return;
     }
     int delta = 0;
     DeltaTimer* pointer = delta_timer;
+    //if we should add it first
     if (delta_timer->ticks_left >= ticks){
         new_timer->next_timer = delta_timer;
         delta_timer = new_timer;
         delta = ticks;
     }
+    //if we should add it to the end of a one element list
     else if (delta_timer->next_timer == 0){
         new_timer->ticks_left -= delta_timer->ticks_left;
         delta_timer->next_timer = new_timer;
@@ -150,7 +381,7 @@ void insertDeltaClock(int ticks, Semaphore* event){
         }
         pointer = pointer->next_timer;
     }
-    
+    SEM_SIGNAL(deltaClockModify);
     
     
 }
@@ -250,5 +481,3 @@ int timeTask(int argc, char* argv[])
 	}
 	return 0;
 } // end timeTask
-
-

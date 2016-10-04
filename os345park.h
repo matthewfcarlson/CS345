@@ -16,6 +16,8 @@
 #define MAX_IN_MUSEUM	5
 #define MAX_IN_GIFTSHOP	2
 
+#define DRIVER_TICKETING -1
+
 //#define ParkDebug(s) printf("\n%s: %s", TASK_NAME, s);
 #define ParkDebug(s) printf("\n%s: %s", "TASK_NAME", s);
 //#define ParkDebug(s) SWAP;

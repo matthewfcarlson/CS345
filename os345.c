@@ -57,6 +57,8 @@ Semaphore* tics1sec;				// 1 second semaphore
 Semaphore* tics10thsec;				// 1/10 second semaphore
 Semaphore* tics10sec;               // 10 second semaphore
 
+Semaphore* deltaClockModify;
+
 // **********************************************************************
 // **********************************************************************
 // global system variables
@@ -146,6 +148,7 @@ int main(int argc, char* argv[])
 	tics1sec = createSemaphore("tics1sec", BINARY, 0);
 	tics10thsec = createSemaphore("tics10thsec", BINARY, 0);
     tics10sec = createSemaphore("tics10sec", COUNTING, 0);
+    deltaClockModify = createSemaphore("deltaClockModify", BINARY, 1);
 
 	//?? ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
