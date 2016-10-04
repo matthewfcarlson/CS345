@@ -59,6 +59,7 @@ extern clock_t myOldClkTime;
 
 extern int pollClock;				// current clock()
 extern int lastPollClock;			// last pollClock
+extern void tickDeltaClock();
 
 extern int superMode;						// system mode
 extern char printBuffer[];
@@ -373,6 +374,7 @@ static void timer_isr()
 	{
 		myOldClkTime = myOldClkTime + ONE_TENTH_SEC;   // update old
 		semSignal(tics10thsec);
+        tickDeltaClock();
 	}
 
 	// ?? add other timer sampling/signaling code here for project 2

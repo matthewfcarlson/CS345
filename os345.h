@@ -186,7 +186,7 @@ TaskID removeFromBlockedQueue(Semaphore* s,TID tid, int prority);
 // ***********************************************************************
 // Command prototypes
 
-#define NUM_COMMANDS 52
+#define NUM_COMMANDS 53
 typedef struct								// command struct
 {
 	char* command;
@@ -213,6 +213,7 @@ void my_printf(char* fmt, ...);
 
 int P3_project3(int, char**);
 int P3_dc(int, char**);
+int P3_tdc(int argc, char* argv[]);
 
 int P4_project4(int, char**);
 int P4_dumpFrame(int, char**);

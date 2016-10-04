@@ -116,8 +116,7 @@ void print_task(int i){
 // list tasks command
 int P2_listTasks(int argc, char* argv[])
 {
-	int i;
-    int position = 0;
+	int position = 0;
     TaskQueue* tq;
 
     printf("\nReady Queue:");

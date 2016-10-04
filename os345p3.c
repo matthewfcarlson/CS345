@@ -35,12 +35,25 @@ extern Semaphore* fillSeat[NUM_CARS];			// (signal) seat ready to fill
 extern Semaphore* seatFilled[NUM_CARS];		// (wait) passenger seated
 extern Semaphore* rideOver[NUM_CARS];			// (signal) ride over
 
+typedef struct delta_timer{
+    Semaphore* trigger;
+    int ticks_left;
+    struct delta_timer* next_timer;
+} DeltaTimer;
+
+DeltaTimer* delta_timer = 0;
+
+static TID timeTaskID;
 
 // ***********************************************************************
 // project 3 functions and tasks
 void CL3_project3(int, char**);
 void CL3_dc(int, char**);
 
+int dcMonitorTask(int argc, char* argv[]);
+int timeTask(int argc, char* argv[]);
+void insertDeltaClock(int ticks, Semaphore* event);
+void tickDeltaClock();
 
 // ***********************************************************************
 // ***********************************************************************
@@ -68,53 +81,97 @@ int P3_project3(int argc, char* argv[])
 	return 0;
 } // end project3
 
-
-
-// ***********************************************************************
-// ***********************************************************************
-// delta clock command
-int P3_dc(int argc, char* argv[])
-{
-	printf("\nDelta Clock");
-	// ?? Implement a routine to display the current delta clock contents
-	printf("\nTo Be Implemented!");
-	return 0;
-} // end CL3_dc
-
-
-/*
-// ***********************************************************************
-// ***********************************************************************
-// ***********************************************************************
-// ***********************************************************************
-// ***********************************************************************
-// ***********************************************************************
-// delta clock command
-int P3_dc(int argc, char* argv[])
-{
-	printf("\nDelta Clock");
-	// ?? Implement a routine to display the current delta clock contents
-	//printf("\nTo Be Implemented!");
-	int i;
-	for (i=0; i<numDeltaClock; i++)
-	{
-		printf("\n%4d%4d  %-20s", i, deltaClock[i].time, deltaClock[i].sem->name);
-	}
-	return 0;
-} // end CL3_dc
-
-
-// ***********************************************************************
-// display all pending events in the delta clock list
-void printDeltaClock(void)
-{
-	int i;
-	for (i=0; i<numDeltaClock; i++)
-	{
-		printf("\n%4d%4d  %-20s", i, deltaClock[i].time, deltaClock[i].sem->name);
-	}
-	return;
+void tickDeltaClock(){
+    if (delta_timer == 0)
+        return;
+    //printf("Ticking delta clock %s\n",delta_timer->trigger->name);
+    delta_timer->ticks_left -= 1;
+    DeltaTimer* destroy_timer;
+    while (delta_timer != 0 && delta_timer->ticks_left == 0 ){
+        SEM_SIGNAL(delta_timer->trigger);
+        destroy_timer = delta_timer;
+        delta_timer = delta_timer->next_timer;
+        free(destroy_timer);
+    }
 }
+
+
+void insertDeltaClock(int ticks, Semaphore* event){
+    DeltaTimer* new_timer = malloc(sizeof(DeltaTimer));
+    //printf("\nCreating delta timer: %s at %d\n",event->name,ticks);
+
+    new_timer->next_timer = 0;
+    new_timer->ticks_left = ticks;
+    new_timer->trigger = event;
+    
+    if (delta_timer == 0){
+        delta_timer = new_timer;
+        return;
+    }
+    int delta = 0;
+    DeltaTimer* pointer = delta_timer;
+    if (delta_timer->ticks_left >= ticks){
+        new_timer->next_timer = delta_timer;
+        delta_timer = new_timer;
+        delta = ticks;
+    }
+    else if (delta_timer->next_timer == 0){
+        new_timer->ticks_left -= delta_timer->ticks_left;
+        delta_timer->next_timer = new_timer;
+        
+    }
+    else{
+        DeltaTimer* prev_timer = pointer;
+        int current_tick_count = 0;
+        while (pointer != 0 && current_tick_count + pointer->ticks_left <= ticks){
+            prev_timer = pointer;
+            current_tick_count += pointer->ticks_left;
+            //printf("Checking %s, count: %d, prev: %s\n",pointer->trigger->name, current_tick_count, prev_timer->trigger->name);
+            pointer = pointer->next_timer;
+            
+        }
+        //printf("Inserting after %s\n",prev_timer->trigger->name);
+        prev_timer->next_timer = new_timer;
+        new_timer->ticks_left -= current_tick_count;
+        delta = new_timer->ticks_left;
+        new_timer->next_timer = pointer;
+    }
+    
+    pointer = new_timer->next_timer;
+    while (delta >= 0 && pointer != 0){
+        if (pointer->ticks_left >= delta) {
+            pointer->ticks_left -= delta;
+            delta = 0;
+        }
+        else{
+            delta -= pointer->ticks_left;
+            pointer->ticks_left = 0;
+            
+        }
+        pointer = pointer->next_timer;
+    }
+    
+    
+    
+}
+
+// ***********************************************************************
+// ***********************************************************************
+// delta clock command
+int P3_dc(int argc, char* argv[])
+{
+	printf("\nDelta Clock\n");
+    DeltaTimer* current_timer = delta_timer;
+    while(current_timer != 0){
+        printf("%s: %i\n",current_timer->trigger->name,current_timer->ticks_left);
+        current_timer = current_timer->next_timer;
+        SWAP
+    }
+	return 0;
+} // end CL3_dc
+
+
+
 
 
 // ***********************************************************************
@@ -136,28 +193,32 @@ int P3_tdc(int argc, char* argv[])
 } // end P3_tdc
 
 
-
+extern Semaphore* tics1sec;
 // ***********************************************************************
 // monitor the delta clock task
 int dcMonitorTask(int argc, char* argv[])
 {
 	int i, flg;
 	char buf[32];
-	// create some test times for event[0-9]
+    Semaphore* event[10];
+    // create some test times for event[0-9]
 	int ttime[10] = {
 		90, 300, 50, 170, 340, 300, 50, 300, 40, 110	};
+    //8,  2,  6,  0,  9,   3,   1,   7,   5,    4
+    //40, 50, 50, 90, 110, 170, 300, 300, 300,  340
+    //Sould be 40, 10, 0, 40, 20, 60, 130, 0, 0, 40
 
 	for (i=0; i<10; i++)
 	{
 		sprintf(buf, "event[%d]", i);
-		event[i] = createSemaphore(buf, BINARY, 0);
+        event[i] = createSemaphore(buf, BINARY, 0);
 		insertDeltaClock(ttime[i], event[i]);
 	}
-	printDeltaClock();
+	P3_dc(0,0);
 
-	while (numDeltaClock > 0)
+	while (delta_timer != 0)
 	{
-		SEM_WAIT(dcChange)
+		SEM_WAIT(tics1sec)
 		flg = 0;
 		for (i=0; i<10; i++)
 		{
@@ -167,17 +228,15 @@ int dcMonitorTask(int argc, char* argv[])
 					flg = 1;
 				}
 		}
-		if (flg) printDeltaClock();
+		if (flg) P3_dc(0,0);
 	}
 	printf("\nNo more events in Delta Clock");
 
 	// kill dcMonitorTask
-	tcb[timeTaskID].state = S_EXIT;
+	//tcb[timeTaskID].state = S_EXIT;
 	return 0;
 } // end dcMonitorTask
 
-
-extern Semaphore* tics1sec;
 
 // ********************************************************************************************
 // display time every tics1sec
@@ -191,5 +250,5 @@ int timeTask(int argc, char* argv[])
 	}
 	return 0;
 } // end timeTask
-*/
+
 

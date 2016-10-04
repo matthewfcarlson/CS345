@@ -633,7 +633,7 @@ void swapTask()
 // initialize operating system
 static int initOS()
 {
-	int i;
+	//int i;
 
 	// make any system adjustments (for unblocking keyboard inputs)
 	INIT_OS
