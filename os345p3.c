@@ -54,12 +54,18 @@ Semaphore* wakeupDriver;
 Semaphore* ticketReady;
 Semaphore* buyTicket;
 Semaphore* muesumOccupied;
+Semaphore* giftOccupied;
 Semaphore* driverDone;
-Semaphore* riderDone[NUM_SEATS];
+Semaphore* riderDone;
 Semaphore* getPassenger;
 Semaphore* seatTaken;
+Semaphore* getDriverMutex;
+Semaphore* driverReadyToDrive;
+Semaphore* needCarDriver;
+
 static TID timeTaskID;
 extern int curTask;
+static int carIDforDriver = 0;
 
 // ***********************************************************************
 // project 3 functions and tasks
@@ -95,10 +101,13 @@ int JPvisitorTask(int argc, char* argv[]){
             {
                 //printf("Player %d is buying a ticket\n",visID);
                 // signal need ticket (produce, put hand up)
-                SEM_SIGNAL(needTicket);		SWAP;
-                
-                // wakeup a driver (produce)
-                SEM_SIGNAL(wakeupDriver);	SWAP;
+                SEM_WAIT(getDriverMutex); SWAP;
+                {
+                    SEM_SIGNAL(needTicket);		SWAP;
+                    // wakeup a driver (produce)
+                    SEM_SIGNAL(wakeupDriver);	SWAP;
+                }
+                SEM_SIGNAL(getDriverMutex); SWAP;
                 
                 // wait for driver to obtain ticket (consume)
                 SEM_WAIT(ticketReady);		SWAP;
@@ -130,8 +139,11 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_WAIT(parkMutex);SWAP;
             myPark.numInMuseum--;SWAP;
             myPark.numInCarLine++;SWAP;
+            myPark.numTicketsAvailable++;SWAP;
             SEM_SIGNAL(parkMutex);SWAP;
+            SEM_SIGNAL(tickets);
             SEM_SIGNAL(muesumOccupied);
+            
             
             //wait for a car to want the passenger
             SEM_WAIT(getPassenger);SWAP;
@@ -142,9 +154,37 @@ int JPvisitorTask(int argc, char* argv[]){
             //let the car know we took the seat
             SEM_SIGNAL(seatTaken);SWAP;
             
+            //wait for the ride to be over
+            SEM_WAIT(riderDone);
+            
+            //go to the gift shop line
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.numInCars--;
+            myPark.numInGiftLine++;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            
+            //wait for the gift shop to be open
+            SEM_WAIT(giftOccupied);
+            //go in the gift shop
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.numInGiftShop++;
+            myPark.numInGiftLine--;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            SEM_SIGNAL(giftOccupied);
+            
+            //chill in the muesum for some amount of time
+            insertDeltaClock(rand() % 50 + 10, taskSems[curTask]);SWAP;
+            SEM_WAIT(taskSems[curTask]);SWAP;
+            
+            //leave the park
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.numInGiftShop--;
+            myPark.numInPark--;SWAP;
+            myPark.numExitedPark++; SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            SEM_SIGNAL(parkOccupancy);
+            
            
-           
-            while(1) SWAP;
             return 0;
         }
         //printf("VISITOR %d is WAITING\n",visID);
@@ -184,50 +224,80 @@ int JPdriverTask(int argc, char* argv[]){
             SEM_WAIT(parkMutex);SWAP;
             myPark.drivers[id] = 0;SWAP;
             SEM_SIGNAL(parkMutex);SWAP;
+            
+            
+        }
+        else if (semTryLock(needCarDriver)){
+            printf("Getting in car\n");
+            SEM_SIGNAL(driverReadyToDrive);
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.drivers[id] = carIDforDriver;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            
+            //wait until you're done
+            SEM_WAIT(driverDone);
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.drivers[id] = 0;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+        }
+        else{
+            printf("\t:( Driver going back to Sleep!\n");
         }
         SWAP;
 
     }
     return 0;
 }
+
 // Handles the cars
 int JPcarTask(int argc, char* argv[])
 {
     int carID = atoi(argv[1]);
     printf("Car: %d",carID);
     while(1){
-        
+        //passenger 1
         SEM_WAIT(fillSeat[carID]); 		SWAP;	// wait for available seat
         
         SEM_SIGNAL(getPassenger); 		SWAP;	// signal for visitor
         SEM_WAIT(seatTaken);	 		SWAP;	// wait for visitor to reply
-        //SEM_SIGNAL(passengerSeated);	SWAP:	// signal visitor in seat
-        
-        //... save passenger ride over semaphore ...
-        //
-        
-        // if last passenger, get driver
-        {
-            //SEM_WAIT(needDriverMutex);	SWAP;
-            
-            // wakeup attendant
-            //SEM_SIGNAL(wakeupDriver);	SWAP;
-            
-            //... save driver ride over semaphore ...
-            
-            // got driver (mutex)
-            //SEM_SIGNAL(needDriverMutex);	SWAP;
-        }
-        
         SEM_SIGNAL(seatFilled[carID]); 	SWAP;	// signal ready for next seat
         
-        // if car full, wait until ride over
+        //passenger 2
+        SEM_WAIT(fillSeat[carID]); 		SWAP;	// wait for available seat
+        
+        SEM_SIGNAL(getPassenger); 		SWAP;	// signal for visitor
+        SEM_WAIT(seatTaken);	 		SWAP;	// wait for visitor to reply
+        SEM_SIGNAL(seatFilled[carID]); 	SWAP;	// signal ready for next seat
+        
+        //passenger 3
+  
+        SEM_WAIT(fillSeat[carID]); 		SWAP;	// wait for available seat
+        
+        SEM_SIGNAL(getPassenger); 		SWAP;	// signal for visitor
+        SEM_WAIT(seatTaken);	 		SWAP;	// wait for visitor to reply//SEM_SIGNAL(passengerSeated);	SWAP:	// signal visitor in seat
+        SEM_SIGNAL(seatFilled[carID]); 	SWAP;	// signal ready for next seat
+        
+        SEM_WAIT(getDriverMutex);
+        {
+            carIDforDriver = carID;
+            SEM_SIGNAL(needCarDriver);	SWAP;
+            SEM_SIGNAL(wakeupDriver);	SWAP;
+            SEM_WAIT(driverReadyToDrive);
+            SEM_SIGNAL(seatFilled[carID]); 	SWAP;	// signal ready for next seat
+        }
+        SEM_SIGNAL(getDriverMutex); SWAP;
+    
         SEM_WAIT(rideOver[carID]);		SWAP;
+        
+        SEM_WAIT(parkMutex);SWAP;
+        myPark.numRidesTaken++;SWAP;
+        SEM_SIGNAL(parkMutex);SWAP;
         
         //let the people know it's over
         SEM_SIGNAL(driverDone);
-        for (int i=0;i<=3;i++)
-            SEM_SIGNAL(riderDone[i]);
+        for (int i=0;i<=3;i++){
+            SEM_SIGNAL(riderDone); SWAP;
+        }
     }
     return 0;
 } // end timeTask
@@ -266,11 +336,11 @@ int P3_project3(int argc, char* argv[])
     parkOccupancy = createSemaphore("parkOccupy", COUNTING, MAX_IN_PARK);	SWAP;
     seatTaken = createSemaphore("seatTaken", BINARY, 0);	SWAP;
     getPassenger = createSemaphore("getPassenger", BINARY, 0);	SWAP;
-    
-    for (int i=0;i<NUM_SEATS;i++){
-        riderDone[i] = createSemaphore("riderDone", BINARY, 0);	SWAP;
-        SWAP;
-    }
+    getDriverMutex = createSemaphore("getADriver", BINARY, 1);	SWAP;
+    driverReadyToDrive = createSemaphore("carDriverReady", BINARY, 0);	SWAP;
+    needCarDriver = createSemaphore("needCarDriver", BINARY, 0);	SWAP;
+    riderDone = createSemaphore("riderDone", COUNTING, 0);	SWAP;
+    giftOccupied = createSemaphore("riderDone", COUNTING, MAX_IN_GIFTSHOP);	SWAP;
     
     for (int i=0;i<NUM_CARS;i++){
         sprintf(buf, "parkCar:%d",i);

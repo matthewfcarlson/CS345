@@ -607,10 +607,10 @@ void drawPark(JPARK *park)
 	}
 
 	// draw park
-	CLEAR_SCREEN;																		SWAP;
-	printf("\n");																		SWAP;
-	for (i=0; i<25; i++) printf("\n%s", &pk[i][0]);							SWAP;
-	printf("\n");																		SWAP;
+	CLEAR_SCREEN;																		//SWAP;
+	printf("\n");																		//SWAP;
+	for (i=0; i<25; i++) printf("\n%s", &pk[i][0]);							//SWAP;
+	printf("\n");																		//SWAP;
 
 	// driver in only one place at a time
 	for (i=0; i<(NUM_DRIVERS-1); i++)
