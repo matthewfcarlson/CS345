@@ -38,6 +38,7 @@ extern Semaphore* seatFilled[NUM_CARS];		// (wait) passenger seated
 extern Semaphore* rideOver[NUM_CARS];			// (signal) ride over
 extern Semaphore* rideEmpty[NUM_CARS];			// (signal) ride over
 extern Semaphore* deltaClockModify;
+extern Semaphore* tics10thsec;
 extern Semaphore* taskSems[MAX_TASKS];		// task semaphore
 
 typedef struct delta_timer{
@@ -77,7 +78,7 @@ void CL3_dc(int, char**);
 int dcMonitorTask(int argc, char* argv[]);
 int timeTask(int argc, char* argv[]);
 void insertDeltaClock(int ticks, Semaphore* event);
-void tickDeltaClock();
+int tickDeltaClockTask(int argc, char* argv[]);
 int JPcarTask(int argc, char* argv[]);
 
 
@@ -85,13 +86,13 @@ int JPcarTask(int argc, char* argv[]);
 // ***********************************************************************
 // ********************************************************************************************
 int JPvisitorTask(int argc, char* argv[]){
-    int visID = atoi(argv[1]);
+    //int visID = atoi(argv[1]);
     SEM_WAIT(parkMutex);SWAP;
     myPark.numOutsidePark++;SWAP;
     SEM_SIGNAL(parkMutex);SWAP;
     
     while(1){
-        insertDeltaClock(rand() % 100 + 10, taskSems[curTask]);SWAP;
+        insertDeltaClock(rand() % 100 + 10, taskSems[curTask]); SWAP;
         SEM_WAIT(taskSems[curTask]);SWAP;
         if (semTryLock(parkOccupancy)){
             SWAP;
@@ -101,6 +102,11 @@ int JPvisitorTask(int argc, char* argv[]){
             myPark.numOutsidePark -= 1;SWAP;
             myPark.numInTicketLine++;SWAP;
             SEM_SIGNAL(parkMutex);SWAP;
+            
+            //wait in line
+            insertDeltaClock(rand() % 50, taskSems[curTask]); SWAP;
+            SEM_WAIT(taskSems[curTask]);SWAP;
+            
             // only 1 visitor at a time requests a ticket
             SEM_WAIT(getTicketMutex);		SWAP;
             {
@@ -128,9 +134,15 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_SIGNAL(getTicketMutex);		SWAP;
            
             
+            
+            //wait in line
+            insertDeltaClock(rand() % 50, taskSems[curTask]); SWAP;
+            SEM_WAIT(taskSems[curTask]);SWAP;
+            
             //Wait in line for muesum
             SEM_WAIT(muesumOccupied);SWAP;
             //let the park know we're in the museum
+            
             SEM_WAIT(parkMutex);SWAP;
             myPark.numInMuseum++;SWAP;
             myPark.numInMuseumLine--;SWAP;
@@ -144,10 +156,12 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_WAIT(parkMutex);SWAP;
             myPark.numInMuseum--;SWAP;
             myPark.numInCarLine++;SWAP;
-            
             SEM_SIGNAL(parkMutex);SWAP;
-            
             SEM_SIGNAL(muesumOccupied);SWAP;
+            
+            //just chill in the line
+            insertDeltaClock(rand() % 50, taskSems[curTask]); SWAP;
+            SEM_WAIT(taskSems[curTask]);SWAP;
             
             
             //wait for a car to want the passenger
@@ -245,19 +259,19 @@ int JPdriverTask(int argc, char* argv[]){
             myPark.drivers[id] = carIDforDriver + 1;SWAP;
             int carIndex = carIDforDriver;
             SEM_SIGNAL(parkMutex);SWAP;
-            printf("Driver %d is in the car index#%d\n",id+1, carIndex);
+            //printf("Driver %d is in the car index#%d\n",id+1, carIndex);
             SEM_SIGNAL(driverReadyToDrive); SWAP;
            
             
             //wait until you're done
-            printf("Driver %d waiting for car index#%d\n",id+1, carIndex);
+            //printf("Driver %d waiting for car index#%d\n",id+1, carIndex);
             SEM_WAIT(driverDone[carIndex]);SWAP;
             
             
             SEM_WAIT(parkMutex);SWAP;
             myPark.drivers[id] = 0;SWAP;
             SEM_SIGNAL(parkMutex);SWAP;
-            printf("Driver %d is out of the car index#%d\n",id+1, carIndex);
+            //printf("Driver %d is out of the car index#%d\n",id+1, carIndex);
             SEM_SIGNAL(driverLeftCar[carIndex]); SWAP;
         }
         else{
@@ -315,7 +329,7 @@ int JPcarTask(int argc, char* argv[])
         SEM_WAIT(rideOver[carID]);		SWAP;
         //let the people know it's over
         SEM_SIGNAL(driverDone[carID]); SWAP;
-        printf("Car index %d has no driver\n",carID);
+        //printf("Car index %d has no driver\n",carID);
         SEM_WAIT(driverLeftCar[carID]); SWAP;
         
         //let the people out
@@ -323,7 +337,7 @@ int JPcarTask(int argc, char* argv[])
             SEM_SIGNAL(riderDone); SWAP;
         }
         SEM_SIGNAL(rideEmpty[carID]);
-        printf("Car %d is done\n",carID+1);
+        //printf("Car %d is done\n",carID+1);
         SWAP;
     }
     return 0;
@@ -346,8 +360,17 @@ int P3_project3(int argc, char* argv[])
 		MED_PRIORITY,				// task priority
 		1,								// task count
 		newArgv);					// task argument
-
-	// wait for park to get initialized...
+    
+    // start park
+    sprintf(buf, "deltaTicker");
+    newArgv[0] = buf;
+    createTask( buf,				// task name
+               tickDeltaClockTask,  // task
+               HIGH_PRIORITY,				// task priority
+               1,								// task count
+               newArgv);					// task argument
+    
+    // wait for park to get initialized...
 	while (!parkMutex) SWAP;
 	printf("\nStart Jurassic Park...");
 
@@ -415,20 +438,23 @@ int P3_project3(int argc, char* argv[])
 	return 0;
 } // end project3
 
-void tickDeltaClock(){
-    //We can assume we are in supermode so no need to wait
-    //SEM_WAIT(deltaClockModify);
-    if (delta_timer == 0){
-        return;
-    }
-    //printf("Ticking delta clock %s\n",delta_timer->trigger->name);
-    delta_timer->ticks_left -= 1;
-    DeltaTimer* destroy_timer;
-    while (delta_timer != 0 && delta_timer->ticks_left <= 0 ){
-        SEM_SIGNAL(delta_timer->trigger);
-        destroy_timer = delta_timer;
-        delta_timer = delta_timer->next_timer;
-        free(destroy_timer);
+int tickDeltaClockTask(int argc, char* argv[]){
+    while(1){
+        SEM_WAIT(tics10thsec);
+        SEM_WAIT(deltaClockModify);
+        if (delta_timer != 0){
+            delta_timer->ticks_left -= 1;
+            DeltaTimer* destroy_timer;
+            while (delta_timer != 0 && delta_timer->ticks_left <= 0 ){
+                SEM_SIGNAL(delta_timer->trigger);
+                destroy_timer = delta_timer;
+                delta_timer = delta_timer->next_timer;
+                free(destroy_timer);
+            }
+            
+        }
+        //printf("Ticking delta clock %s\n",delta_timer->trigger->name);
+        SEM_SIGNAL(deltaClockModify);
     }
     
 }

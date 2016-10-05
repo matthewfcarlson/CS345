@@ -274,7 +274,7 @@ int P1_shellTask(int argc, char* argv[])
         for (i=0; i<newArgc;i++) free(newArgv[i]);
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
 	}
-    free(newArgv);
+    //free(newArgv);
 	return 0;						// terminate task
 } // end P1_shellTask
 

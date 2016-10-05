@@ -374,7 +374,6 @@ static void timer_isr()
 	{
 		myOldClkTime = myOldClkTime + ONE_TENTH_SEC;   // update old
 		semSignal(tics10thsec);
-        tickDeltaClock();
 	}
 
 	// ?? add other timer sampling/signaling code here for project 2
