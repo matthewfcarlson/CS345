@@ -19,9 +19,10 @@
 #define DRIVER_TICKETING -1
 
 //#define ParkDebug(s) printf("\n%s: %s", TASK_NAME, s);
-#define ParkDebug(s) printf("\n%s: %s", "TASK_NAME", s);
+#define ParkDebug(s) //printf("\n%s: %s", "TASK_NAME", s);
 //#define ParkDebug(s) SWAP;
-#define CLEAR_SCREEN	//system("cls");
+#define CLEAR_SCREEN	system("clear");
+#define PRICE_TICKET 1
 
 // ***********************************************************************
 // jurassic structs
@@ -47,7 +48,9 @@ typedef struct jpark
 	int numInGiftLine;			// # in gift shop line
 	int numInGiftShop;			// # in gift shop
 	int drivers[NUM_DRIVERS];	// driver state (-1=T, 0=z, 1=A, 2=B, etc.)
+    int earnings;
 	CAR cars[NUM_CARS];			// cars in park
+    int ticks;
 } JPARK;
 
 // ***********************************************************************

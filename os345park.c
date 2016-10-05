@@ -30,6 +30,7 @@ Semaphore* parkMutex;						// mutex park variable access
 Semaphore* fillSeat[NUM_CARS];			// (signal) seat ready to fill
 Semaphore* seatFilled[NUM_CARS];			// (wait) passenger seated
 Semaphore* rideOver[NUM_CARS];			// (signal) ride over
+Semaphore* rideEmpty[NUM_CARS];			// (signal) ride over
 
 extern TCB tcb[];							// task control block
 extern int curTask;
@@ -38,6 +39,36 @@ extern Semaphore* tics1sec;				// 1 second semaphore
 Semaphore* moveCars;
 int makeMove(int car);
 void drawPark(JPARK *park);
+
+void printPark(JPARK *park){
+    printf("\nnumInPark=%d", park->numInPark);
+    printf("\tnumInTicketLine=%d", park->numInTicketLine);
+    printf("\tnumInMuseumLine=%d", park->numInMuseumLine);
+    printf("\tnumInMuseum=%d", park->numInMuseum);
+    printf("\nnumInCarLine=%d", park->numInCarLine);
+    printf("\tnumInCars=%d", park->numInCars);
+    printf("\t\tnumInGiftLine=%d", park->numInGiftLine);
+    printf("\t\tnumInGiftShop=%d", park->numInGiftShop);
+    printf("\nnumOutPark=%d",park->numOutsidePark);
+    printf("\tnumExitPark=%d",park->numExitedPark);
+    printf("\nCars:");
+    for (int i=0;i<NUM_CARS;i++) printf("\t%d:%d",i+1,park->cars[i].passengers);
+    printf("\nDrivers:");
+    for (int i=0;i<NUM_DRIVERS;i++) printf("\t%d:%d",i+1,park->drivers[i]);
+    printf("\n");
+    
+    // driver in only one place at a time
+    for (int i=0; i<(NUM_DRIVERS-1); i++)
+    {
+        if (park->drivers[i] != 0)
+        {
+            for (int j=i+1; j<NUM_DRIVERS; j++)
+            {
+                assert("Driver Error" && (park->drivers[i] != park->drivers[j]));
+            }
+        }
+    }
+}
 
 
 // ***********************************************************************
@@ -77,6 +108,8 @@ int jurassicTask(int argc, char* argv[])
 	myPark.numInGiftLine = 0;						SWAP;			// Gift shop line
 	myPark.numInGiftShop = 0;						SWAP;			// # in gift shop
 	myPark.numExitedPark = 0;						SWAP;			// # exited park
+    myPark.earnings = 0;
+    myPark.ticks = 0;
 
 	// create move care signal semaphore
 	moveCars = createSemaphore("moveCar", BINARY, 0);		SWAP;
@@ -90,6 +123,8 @@ int jurassicTask(int argc, char* argv[])
 		seatFilled[i] = createSemaphore(buf, BINARY, 0);	SWAP;
 		sprintf(buf, "rideOver%d", i);						SWAP;
 		rideOver[i] = createSemaphore(buf, BINARY, 0);		SWAP;
+        sprintf(buf, "rideEmpty%d", i);						SWAP;
+        rideEmpty[i] = createSemaphore(buf, BINARY, 0);		SWAP;
 	}
 
 	// start display park task
@@ -171,6 +206,7 @@ int jurassicTask(int argc, char* argv[])
 						sprintf(buf, "SEM_SIGNAL(rideOver[%d])", c[i]);
 						ParkDebug(buf);
 						SEM_SIGNAL(rideOver[c[i]]);				SWAP;
+                        SEM_WAIT(rideEmpty[c[i]]);
 					}
 				}
 
@@ -324,11 +360,13 @@ int jurassicDisplayTask(int argc, char* argv[])
 
 		// take snapshot of park
 		SEM_WAIT(parkMutex);										SWAP;
+        myPark.ticks += 1;                                          SWAP;
 		currentPark = myPark;										SWAP;
 		SEM_SIGNAL(parkMutex);										SWAP;
 
 		// draw current park
 		drawPark(&currentPark);										SWAP;
+        //printPark(&currentPark);
 
 		// signal for cars to move
 		SEM_SIGNAL(moveCars);										SWAP;
@@ -419,9 +457,9 @@ void drawPark(JPARK *park)
 	strcpy(&pk[7][0],  "   |*Booth *              | +  |     * B=# D2=# *       / \\          +|");
 	strcpy(&pk[8][0],  "   |* T=#  * #            | +  |     * C=# D3=# *      /   -------   +|");
 	strcpy(&pk[9][0],  "   |* P=#  *              | +  |     * D=# D4=# *     /           \\  +|");
-	strcpy(&pk[10][0], "   |* S=#  *              | +  |     ************    /             | +|");
-	strcpy(&pk[11][0], "   |********            <<| +   \\                   /              | +|");
-	strcpy(&pk[12][0], "   |                      | +    -------------------               | +|");
+	strcpy(&pk[10][0], "   |* R=#  *              | +  |     ************    /             | +|");
+	strcpy(&pk[11][0], "   |* $=   *            <<| +   \\                   /              | +|");
+	strcpy(&pk[12][0], "   |********              | +    -------------------               | +|");
 	strcpy(&pk[13][0], "   |                       \\+       /   \\                          | +|");
 	strcpy(&pk[14][0], "   |                        +-------     |                         | +|");
 	strcpy(&pk[15][0], "   |                        +++++++++++  |                         | +|");
@@ -454,6 +492,9 @@ void drawPark(JPARK *park)
 	// S=#, output guests completing ride
 	sprintf(buf, "%d", park->numRidesTaken);							SWAP;
 	memcpy(&pk[10][8], buf, strlen(buf));								SWAP;
+    
+    sprintf(buf, "%d", park->earnings);							SWAP;
+    memcpy(&pk[11][8], buf, strlen(buf));								SWAP;
 
 	// out number in ticket line
 	sprintf(buf, "%d ", park->numInTicketLine);							SWAP;
@@ -609,7 +650,7 @@ void drawPark(JPARK *park)
 	// draw park
 	CLEAR_SCREEN;																		//SWAP;
 	printf("\n");																		//SWAP;
-	for (i=0; i<25; i++) printf("\n%s", &pk[i][0]);							//SWAP;
+	for (i=0; i<25; i++) printf("\n%s", &pk[i][0]);
 	printf("\n");																		//SWAP;
 
 	// driver in only one place at a time
