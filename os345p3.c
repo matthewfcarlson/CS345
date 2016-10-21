@@ -39,6 +39,7 @@ extern Semaphore* rideOver[NUM_CARS];			// (signal) ride over
 extern Semaphore* rideEmpty[NUM_CARS];			// (signal) ride over
 extern Semaphore* deltaClockModify;
 extern Semaphore* tics10thsec;
+extern Semaphore* showPark;
 extern Semaphore* taskSems[MAX_TASKS];		// task semaphore
 
 typedef struct delta_timer{
@@ -64,6 +65,9 @@ Semaphore* seatTaken;
 Semaphore* getDriverMutex;
 Semaphore* driverReadyToDrive;
 Semaphore* needCarDriver;
+Semaphore* needGiftCashier;
+Semaphore* cashierAvailable;
+Semaphore* cashierCheckedout;
 Semaphore* driverLeftCar[NUM_CARS];
 
 static TID timeTaskID;
@@ -90,10 +94,15 @@ int JPvisitorTask(int argc, char* argv[]){
     SEM_WAIT(parkMutex);SWAP;
     myPark.numOutsidePark++;SWAP;
     SEM_SIGNAL(parkMutex);SWAP;
-    
+    int waiting_ticks = 0;
+    int last_tick_time = 0;
     while(1){
+        
+        //wait outside the park
         insertDeltaClock(rand() % 100 + 10, taskSems[curTask]); SWAP;
         SEM_WAIT(taskSems[curTask]);SWAP;
+        
+        
         if (semTryLock(parkOccupancy)){
             SWAP;
             //Try and get a ticket
@@ -107,9 +116,12 @@ int JPvisitorTask(int argc, char* argv[]){
             insertDeltaClock(rand() % 50, taskSems[curTask]); SWAP;
             SEM_WAIT(taskSems[curTask]);SWAP;
             
+            last_tick_time = myPark.ticks;
             // only 1 visitor at a time requests a ticket
             SEM_WAIT(getTicketMutex);		SWAP;
             {
+                waiting_ticks += myPark.ticks - last_tick_time;
+                last_tick_time = myPark.ticks;
                 //printf("Player %d is buying a ticket\n",visID);
                 // signal need ticket (produce, put hand up)
                 SEM_WAIT(getDriverMutex); SWAP;
@@ -128,7 +140,10 @@ int JPvisitorTask(int argc, char* argv[]){
                 SEM_WAIT(parkMutex);SWAP;
                 myPark.numInTicketLine--;SWAP;
                 myPark.numInMuseumLine++;SWAP;
+                waiting_ticks += myPark.ticks - last_tick_time;
+                last_tick_time = myPark.ticks;
                 SEM_SIGNAL(parkMutex);SWAP;
+                
             }
             // done (produce)
             SEM_SIGNAL(getTicketMutex);		SWAP;
@@ -140,7 +155,11 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_WAIT(taskSems[curTask]);SWAP;
             
             //Wait in line for muesum
+            last_tick_time = myPark.ticks;
             SEM_WAIT(muesumOccupied);SWAP;
+            waiting_ticks += myPark.ticks - last_tick_time;
+            last_tick_time = myPark.ticks;
+            
             //let the park know we're in the museum
             
             SEM_WAIT(parkMutex);SWAP;
@@ -164,9 +183,12 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_WAIT(taskSems[curTask]);SWAP;
             
             
+            last_tick_time = myPark.ticks;
             //wait for a car to want the passenger
             SEM_WAIT(getPassenger);SWAP;
             SEM_WAIT(parkMutex);SWAP;
+            waiting_ticks += myPark.ticks - last_tick_time;
+            last_tick_time = myPark.ticks;
             myPark.numInCars++;SWAP;
             myPark.numInCarLine--;SWAP;
             myPark.numTicketsAvailable++;SWAP;
@@ -185,7 +207,11 @@ int JPvisitorTask(int argc, char* argv[]){
             SEM_SIGNAL(parkMutex);SWAP;
             
             //wait for the gift shop to be open
+            last_tick_time = myPark.ticks;
             SEM_WAIT(giftOccupied);SWAP;
+            waiting_ticks += myPark.ticks - last_tick_time;
+            last_tick_time = myPark.ticks;
+            
             
             //go in the gift shop
             SEM_WAIT(parkMutex);SWAP;
@@ -197,6 +223,37 @@ int JPvisitorTask(int argc, char* argv[]){
             //chill in the gift shop for some amount of time
             insertDeltaClock(rand() % 50 + 10, taskSems[curTask]);SWAP;
             SEM_WAIT(taskSems[curTask]);SWAP;
+            
+            last_tick_time = myPark.ticks;
+            // signal need a cashier (produce, put hand up)
+            SEM_WAIT(getDriverMutex); SWAP;
+            {
+                SEM_SIGNAL(needGiftCashier);		SWAP;
+                // wakeup a driver (produce)
+                SEM_SIGNAL(wakeupDriver);	SWAP;
+            }
+            SEM_SIGNAL(getDriverMutex); SWAP;
+            
+            SEM_WAIT(cashierAvailable);
+            waiting_ticks += myPark.ticks - last_tick_time;
+            last_tick_time = myPark.ticks;
+            
+            
+            
+            //Buy something from gift shop for some amount of time
+            insertDeltaClock(rand() % 20, taskSems[curTask]);SWAP;
+            SEM_WAIT(taskSems[curTask]);SWAP;
+            
+            SEM_WAIT(parkMutex);SWAP;
+            //typical wait time is 0 to 85 ticks
+            int spent_on_giftshop = rand()%3 + (100-waiting_ticks)/20;
+            if (spent_on_giftshop < 1) spent_on_giftshop = 1;
+            myPark.earnings += spent_on_giftshop;
+            SEM_SIGNAL(parkMutex);SWAP;
+  
+            SEM_SIGNAL(cashierCheckedout);
+            
+            printf("Visitor is leaving and had to wait %d ticks total.\r\n",waiting_ticks);
             
             
             //leave the park
@@ -224,6 +281,7 @@ int JPdriverTask(int argc, char* argv[]){
     while(1){
         //wait for someone to wake up a driver
         SEM_WAIT(wakeupDriver);SWAP;
+        
         //see what you need to do
         if (semTryLock(needTicket)){
             //set your state
@@ -253,6 +311,7 @@ int JPdriverTask(int argc, char* argv[]){
             
             
         }
+        //they need a car driver
         else if (semTryLock(needCarDriver)){
             
             SEM_WAIT(parkMutex);SWAP;
@@ -274,8 +333,26 @@ int JPdriverTask(int argc, char* argv[]){
             //printf("Driver %d is out of the car index#%d\n",id+1, carIndex);
             SEM_SIGNAL(driverLeftCar[carIndex]); SWAP;
         }
+        //they need a cashier
+        else if (semTryLock(needGiftCashier)){
+            SEM_WAIT(parkMutex);SWAP;
+            //set to cashier mode
+            myPark.drivers[id] = -2;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+            
+            //printf("Driver #%i is cashier\n\r",id);
+            SEM_SIGNAL(cashierAvailable);
+            SEM_WAIT(cashierCheckedout);
+            
+            //go back to sleep
+            SEM_WAIT(parkMutex);SWAP;
+            myPark.drivers[id] = 0;SWAP;
+            SEM_SIGNAL(parkMutex);SWAP;
+        }
+        //we don't know what we're supposed to do
         else{
             myPark.drivers[id] = 0;SWAP;
+            
         }
         SWAP;
 
@@ -389,7 +466,10 @@ int P3_project3(int argc, char* argv[])
     getDriverMutex = createSemaphore("getADriver", BINARY, 1);	SWAP;
     driverReadyToDrive = createSemaphore("carDriverReady", BINARY, 0);	SWAP;
     needCarDriver = createSemaphore("needCarDriver", BINARY, 0);	SWAP;
+    needGiftCashier = createSemaphore("needGiftCashier", BINARY, 0);	SWAP;
     riderDone = createSemaphore("riderDone", COUNTING, 0);	SWAP;
+    cashierAvailable = createSemaphore("cashierAvailable", COUNTING, 0);	SWAP;
+    cashierCheckedout = createSemaphore("cashierCheckedout", COUNTING, 0);	SWAP;
     
     giftOccupied = createSemaphore("giftOccupy", COUNTING, MAX_IN_GIFTSHOP);	SWAP;
     
@@ -595,6 +675,15 @@ int P3_tdc(int argc, char* argv[])
 	return 0;
 } // end P3_tdc
 
+
+
+// ***********************************************************************
+// test delta clock
+int P3_checkPark(int argc, char* argv[])
+{
+    SEM_SIGNAL(showPark);
+    return 0;
+} // end P3_tdc
 
 extern Semaphore* tics1sec;
 // ***********************************************************************

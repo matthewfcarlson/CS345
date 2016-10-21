@@ -72,7 +72,7 @@ int getFrame(int notme)
 //  / / / /     / 	             / /       /
 // F D R P - - f f|f f f f f f f f|S - - - p p p p|p p p p p p p p
 
-#define MMU_ENABLE	0
+#define MMU_ENABLE	TRUE
 
 unsigned short int *getMemAdr(int va, int rwFlg)
 {
@@ -80,22 +80,42 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 	int rpta, rpte1, rpte2;
 	int upta, upte1, upte2;
 	int rptFrame, uptFrame;
-
+    printf("Getting memory address for VA: %x, RPTI: %d, UPTI: %x\n",va,RPTI(va),UPTI(va));
 	// turn off virtual addressing for system RAM
 	if (va < 0x3000) return &memory[va];
 #if MMU_ENABLE
+
 	rpta = tcb[curTask].RPT + RPTI(va);		// root page table address
 	rpte1 = memory[rpta];					// FDRP__ffffffffff
 	rpte2 = memory[rpta+1];					// S___pppppppppppp
-	if (DEFINED(rpte1))	{ }					// rpte defined
-		else			{ }					// rpte undefined
-	memory[rpta] = SET_REF(rpte1);			// set rpt frame access bit
+    if (DEFINED(rpte1))	{ // rpte defined
+        printf("RPTE1 defined\n");
+    
+    }
+    else{ // rpte undefined
+        //printf("RPTE1 not defined\n");
+        int rptFrame = getAvailableFrame();
+        printf("New RPT FRAME for root page table %x\n",rptFrame);
+        rpte1 = SET_DEFINED(rpte1);
+        rpte1 = ((~BITS_9_0_MASK)&rpte1)|rptFrame;
+        
+    
+    }
+    memory[rpta] = SET_REF(rpte1);			// set rpt frame access bit
 
 	upta = (FRAME(rpte1)<<6) + UPTI(va);	// user page table address
 	upte1 = memory[upta]; 					// FDRP__ffffffffff
 	upte2 = memory[upta+1]; 				// S___pppppppppppp
-	if (DEFINED(upte1))	{ }					// upte defined
-		else			{ }					// upte undefined
+    printf("Getting UPT at frame %x: %x\n",FRAME(rpte1),upta);
+	if (DEFINED(upte1))	{
+        printf("UPTE1 defined\n");
+    }					// upte defined
+    else			{
+        int uptFrame = getAvailableFrame();
+        printf("New UPT FRAME for root page table %x\n",rptFrame);
+        upte1 = SET_DEFINED(upte1);
+        upte1 = ((~BITS_9_0_MASK)&upte1)|uptFrame;
+    }					// upte undefined
 	memory[upta] = SET_REF(upte1); 			// set upt frame access bit
 	return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];
 #else

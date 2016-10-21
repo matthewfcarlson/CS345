@@ -26,6 +26,7 @@
 #include "os345park.h"
 
 JPARK myPark;
+Semaphore* showPark;
 Semaphore* parkMutex;						// mutex park variable access
 Semaphore* fillSeat[NUM_CARS];			// (signal) seat ready to fill
 Semaphore* seatFilled[NUM_CARS];			// (wait) passenger seated
@@ -111,6 +112,8 @@ int jurassicTask(int argc, char* argv[])
     myPark.earnings = 0;
     myPark.ticks = 0;
 
+    showPark = createSemaphore("showPark", COUNTING, 0);		SWAP;
+    
 	// create move care signal semaphore
 	moveCars = createSemaphore("moveCar", BINARY, 0);		SWAP;
 
@@ -365,7 +368,8 @@ int jurassicDisplayTask(int argc, char* argv[])
 		SEM_SIGNAL(parkMutex);										SWAP;
 
 		// draw current park
-		drawPark(&currentPark);										SWAP;
+		if (semTryLock(showPark))
+            drawPark(&currentPark);										SWAP;
         //printPark(&currentPark);
 
 		// signal for cars to move
@@ -429,7 +433,7 @@ void drawPark(JPARK *park)
 
 	int i, j;
 	char svtime[64];						// ascii current time
-	char driver[] = {'T', 'z', 'A', 'B', 'C', 'D' };
+	char driver[] = {'G', 'T', 'z', 'A', 'B', 'C', 'D' };
 	char buf[32];
 	char pk[25][80];
 	static int cp[34][3] = {	{2, 29, 0}, {2, 33, 0}, {2, 37, 0}, {2, 41, 0},				// 0-6
@@ -476,6 +480,10 @@ void drawPark(JPARK *park)
 	// output time
 	sprintf(buf, "%s", myTime(svtime));									SWAP;
 	memcpy(&pk[0][strlen(pk[0]) - strlen(buf)], buf, strlen(buf));		SWAP;
+    
+    // output ticks
+    sprintf(buf, "t:%d", park->ticks);									SWAP;
+    memcpy(&pk[0][strlen(pk[0]) - 30], buf, strlen(buf));		SWAP;
 
 	// out number waiting to get into park
 	sprintf(buf, "%d", park->numOutsidePark);							SWAP;
@@ -534,7 +542,7 @@ void drawPark(JPARK *park)
 	// drivers
 	for (i=0; i<NUM_DRIVERS; i++)
 	{
-		pk[6+i][46] = driver[park->drivers[i] + 1];						SWAP;
+		pk[6+i][46] = driver[park->drivers[i] + 2];						SWAP;
 	}
 
 	// output cars
@@ -660,7 +668,7 @@ void drawPark(JPARK *park)
 		{
 			for (j=i+1; j<NUM_DRIVERS; j++)
 			{
-				assert("Driver Error" && (park->drivers[i] != park->drivers[j]));
+				assert("Driver Error" && (park->drivers[i] == -2 || park->drivers[i] != park->drivers[j]));
 			}
 		}
 	}

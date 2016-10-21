@@ -469,6 +469,7 @@ Command** P1_init()
 	commands[i++] = newCommand("project3", "p3", P3_project3, "P3: Jurassic Park");
 	commands[i++] = newCommand("deltaclock", "dc", P3_dc, "List deltaclock entries");
     commands[i++] = newCommand("testdeltaclock", "tdc", P3_tdc, "List deltaclock entries");
+    commands[i++] = newCommand("park", "park", P3_checkPark, "Outputs the status of the Jurrassic Park");
 
 	// P4: Virtual Memory
 	commands[i++] = newCommand("project4", "p4", P4_project4, "P4: Virtual Memory");
