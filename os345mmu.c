@@ -44,6 +44,8 @@ int getAvailableFrame(void);
 extern TCB tcb[];					// task control block
 extern int curTask;					// current task #
 
+//this function gets the first available frame
+//sends stuff out to swap space if we need to
 int getFrame(int notme)
 {
 	int frame;
@@ -80,45 +82,98 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 	int rpta, rpte1, rpte2;
 	int upta, upte1, upte2;
 	int rptFrame, uptFrame;
-    printf("Getting memory address for VA: %x, RPTI: %d, UPTI: %x\n",va,RPTI(va),UPTI(va));
-	// turn off virtual addressing for system RAM
+    //printf("Getting memory address for VA: %x, RPTI: %d, UPTI: %x, rwFlag:%d\n",va,RPTI(va),UPTI(va),rwFlg);
+	
+    // turn off virtual addressing for system RAM
 	if (va < 0x3000) return &memory[va];
 #if MMU_ENABLE
 
+    memAccess++;
 	rpta = tcb[curTask].RPT + RPTI(va);		// root page table address
 	rpte1 = memory[rpta];					// FDRP__ffffffffff
 	rpte2 = memory[rpta+1];					// S___pppppppppppp
     if (DEFINED(rpte1))	{ // rpte defined
-        printf("RPTE1 defined\n");
-    
+       // printf("RPTE1 defined with rpte2:%x\n",rpte2);
+        //rpte defined
+        memHits++;
     }
     else{ // rpte undefined
         //printf("RPTE1 not defined\n");
-        int rptFrame = getAvailableFrame();
-        printf("New RPT FRAME for root page table %x\n",rptFrame);
-        rpte1 = SET_DEFINED(rpte1);
-        rpte1 = ((~BITS_9_0_MASK)&rpte1)|rptFrame;
-        
+    
+        // rpte undefined
+        // 1. get a UPT frame from memory (may have to free up frame)
+        // 2. if paged out (DEFINED) load swapped page into UPT frame
+        // else initialize UPT
+        rptFrame = getFrame(-1);
+        rpte1 = SET_DEFINED(rptFrame);
+        if (PAGED(rpte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
+        {
+            memPageFaults++;
+            accessPage(SWAPPAGE(rpte2), rptFrame, PAGE_READ);
+        }
+        else	// define new upt frame and reference from rpt
+        {	rpte1 = SET_DIRTY(rpte1);  rpte2 = 0;
+            // undefine all upte's
+        }
     
     }
-    memory[rpta] = SET_REF(rpte1);			// set rpt frame access bit
+    rptFrame = FRAME(rpte1);
+    
+    MEMWORD(rpta) = rpte1 = SET_REF(SET_PINNED(rpte1));	// set rpt frame access bit
+    MEMWORD(rpta+1) = rpte2;
+    
+    //User page table entry
+    memAccess++;
+    upta = (FRAME(rpte1)<<6) + UPTI(va);
+    upte1 = MEMWORD(upta);
+    upte2 = MEMWORD(upta+1);
+    if (DEFINED(upte1)){	// upte defined
+        memHits++;
+    }
+    else {	// upte undefined
 
-	upta = (FRAME(rpte1)<<6) + UPTI(va);	// user page table address
+        // 1. get a physical frame (may have to free up frame) (x3000 - limit) (192 - 1023)
+        uptFrame = getFrame(rptFrame); //but not the root page table
+        upte1 = SET_DEFINED(uptFrame);
+        // 2. if paged out (DEFINED) load swapped page into physical frame
+        if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
+        {
+            memPageFaults++;
+            accessPage(SWAPPAGE(upte2), uptFrame, PAGE_READ);
+        }
+        else	// define new upt frame and reference from rpt
+        {	upte1 = SET_DIRTY(upte1);  upte2 = 0;
+            // undefine all upte's
+        }
+        // else new frame
+    }
+    MEMWORD(upta) = upte1 = SET_REF(SET_PINNED(upte1));	// set upt frame access bit
+    MEMWORD(upta+1) = upte2;
+    
+    printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
+    memAccess++;
+    memHits++;
+    
+    return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];	// return physical address}
+
+	/*upta = (FRAME(rpte1)<<6) + UPTI(va);	// user page table address
 	upte1 = memory[upta]; 					// FDRP__ffffffffff
 	upte2 = memory[upta+1]; 				// S___pppppppppppp
-    printf("Getting UPT at frame %x: %x\n",FRAME(rpte1),upta);
+    printf("Getting UPT at frame %x Mem:%x\n",FRAME(rpte1),upta);
 	if (DEFINED(upte1))	{
-        printf("UPTE1 defined\n");
+        //printf("UPTE1 defined\n");
     }					// upte defined
-    else			{
+    else{
         int uptFrame = getAvailableFrame();
         printf("New UPT FRAME for root page table %x\n",rptFrame);
         upte1 = SET_DEFINED(upte1);
-        upte1 = ((~BITS_9_0_MASK)&upte1)|uptFrame;
+        upte1 = ((~BITS_9_0_MASK)&upte1)|FRAME(uptFrame);
     }					// upte undefined
 	memory[upta] = SET_REF(upte1); 			// set upt frame access bit
 	return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];
+     */
 #else
+    //if we're not using a MMU, just use the regular old memory address
 	return &memory[va];
 #endif
 } // end getMemAdr

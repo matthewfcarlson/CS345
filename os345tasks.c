@@ -26,6 +26,7 @@
 
 #include "os345.h"
 #include "os345signals.h"
+#include "os345lc3.h"
 //#include "os345config.h"
 
 
@@ -82,7 +83,7 @@ int createTask(char* name,						// task name
 			tcb[tid].argv = argv;			// argument pointers
 
 			tcb[tid].event = 0;				// suspend semaphore
-			tcb[tid].RPT = 0;					// root page table (project 5)
+            tcb[tid].RPT = LC3_RPT + ((tid) ? ((tid-1)<<6) : 0);		// root page table (project 5)
 			tcb[tid].cdir = CDIR;			// inherit parent cDir (project 6)
 
 			// define task signals
