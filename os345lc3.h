@@ -50,8 +50,10 @@
 #define REFERENCED(e1)    ((e1)&BIT_13_MASK)
 #define PINNED(e1)        ((e1)&BIT_12_MASK)
 #define FRAME(e1)         ((e1)&BITS_9_0_MASK)
+#define PAGE(e1)         ((e1)&BITS_9_0_MASK)
 #define PAGED(e2)         ((e2)&BIT_15_MASK)
 #define SWAPPAGE(e2)      ((e2)&BITS_12_0_MASK)
+
 
 #define MEMWORD(a)        (memory[a])
 #define MEMLWORD(a)       ((memory[a]<<16)+memory[(a)+1])
@@ -61,11 +63,15 @@
 #define SET_REF(e1)       ((e1)|BIT_13_MASK)
 #define SET_PINNED(e1)    ((e1)|BIT_12_MASK)
 #define SET_PAGED(e2)     ((e2)|BIT_15_MASK)
+#define SET_PAGE(e1,e2)      ((e1)|(BITS_11_0_MASK&e2))
+#define SET_FRAME(e1,e2)     ((e1)|(BITS_9_0_MASK&e2))
 
 #define CLEAR_DEFINED(e1) ((e1)&~BIT_15_MASK)
 #define CLEAR_DIRTY(e1)   ((e1)&~BIT_14_MASK)
 #define CLEAR_REF(e1)     ((e1)&~BIT_13_MASK)
 #define CLEAR_PINNED(e1)  ((e1)&~BIT_12_MASK)
+#define CLEAR_PAGE(e1)      ((e1)&~BITS_11_0_MASK)
+#define CLEAR_FRAME(e1)     ((e1)&~BITS_9_0_MASK)
 
 // ---------------------------------------------------------------------
 // Bit Masks
@@ -91,6 +97,7 @@
 #define BITS_7_0_MASK	0x000000ff
 #define BITS_8_0_MASK	0x000001ff
 #define BITS_10_0_MASK	0x000007ff
+#define BITS_11_0_MASK  0x00000fff
 #define BITS_12_0_MASK	0x00001fff
 #define BITS_15_0_MASK	0x0000ffff
 
