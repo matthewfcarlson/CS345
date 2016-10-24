@@ -270,7 +270,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 {
 	int rpta, rpte1, rpte2;
 	int upta, upte1, upte2;
-	int rptFrame, uptFrame;
+	int dataFrame, uptFrame;
     
     // turn off virtual addressing for system RAM
 	if (va < 0x3000) return &memory[va];
@@ -288,12 +288,12 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         // 1. get a UPT frame from memory (may have to free up frame)
         // 2. if paged out (DEFINED) load swapped page into UPT frame
         // else initialize UPT
-        rptFrame = getFrame(-1);
-        rpte1 = SET_DEFINED(rptFrame);
+        uptFrame = getFrame(-1);
+        rpte1 = SET_DEFINED(uptFrame);
         if (PAGED(rpte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            accessPage(SWAPPAGE(rpte2), rptFrame, PAGE_READ);
+            accessPage(SWAPPAGE(rpte2), uptFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
         {	rpte1 = SET_DIRTY(rpte1);
@@ -303,7 +303,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     
     }
     //get the frame number
-    rptFrame = FRAME(rpte1);
+    uptFrame = FRAME(rpte1);
     
     //update the root page table entries
     //MEMWORD(rpta) = rpte1 = SET_REF(SET_PINNED(rpte1));	// set rpt frame access bit
@@ -321,13 +321,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     else {	// upte undefined
 
         // 1. get a physical frame (may have to free up frame) (x3000 - limit) (192 - 1023)
-        uptFrame = getFrame(rptFrame); //but not the root page table
-        upte1 = SET_DEFINED(uptFrame);
+        dataFrame = getFrame(uptFrame); //but not the root page table
+        upte1 = SET_DEFINED(dataFrame);
         // 2. if paged out (DEFINED) load swapped page into physical frame
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            accessPage(SWAPPAGE(upte2), uptFrame, PAGE_READ);
+            accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
         {	upte1 = SET_DIRTY(upte1);  upte2 = 0;
@@ -336,7 +336,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 
     }
     //update the user page table entry
-    MEMWORD(upta) = upte1 = SET_REF(SET_PINNED(upte1));	// set upt frame access bit
+    MEMWORD(upta) = upte1 = SET_REF(upte1);	// set upt frame access bit
     MEMWORD(upta+1) = upte2;
     
     //printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
@@ -347,22 +347,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     
     return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];	// return physical address}
 
-	/*upta = (FRAME(rpte1)<<6) + UPTI(va);	// user page table address
-	upte1 = memory[upta]; 					// FDRP__ffffffffff
-	upte2 = memory[upta+1]; 				// S___pppppppppppp
-    printf("Getting UPT at frame %x Mem:%x\n",FRAME(rpte1),upta);
-	if (DEFINED(upte1))	{
-        //printf("UPTE1 defined\n");
-    }					// upte defined
-    else{
-        int uptFrame = getAvailableFrame();
-        printf("New UPT FRAME for root page table %x\n",rptFrame);
-        upte1 = SET_DEFINED(upte1);
-        upte1 = ((~BITS_9_0_MASK)&upte1)|FRAME(uptFrame);
-    }					// upte undefined
-	memory[upta] = SET_REF(upte1); 			// set upt frame access bit
-	return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];
-     */
+	
 #else
     //if we're not using a MMU, just use the regular old memory address
 	return &memory[va];
