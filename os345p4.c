@@ -151,9 +151,16 @@ int P4_dumpPageMemory(int argc, char* argv[])
 	int page;
 
 	printf("\nValidate arguments...");	// ?? validate arguments
-	page = INTEGER(argv[1]);
+    if (argc >= 2){
+        page = INTEGER(argv[1]);
 
-	displayPage(page);
+        displayPage(page);
+    }
+    else{
+        for (page = 0;page <5;page++){
+            printf("Page #%d\n",page);
+        }
+    }
 	return 0;
 } // end P4_dumpPageMemory
 
@@ -449,7 +456,7 @@ void displayPage(int pn)
    short int *buffer;
    int i, ma;
    printf("\nPage %d", pn);
-   buffer = (short int*)accessPage(pn, pn, 3);
+   buffer = (int*)accessPage(pn, pn, 3);
    for (ma = 0; ma < 64;)
 	{
       printf("\n0x%04x:", ma);

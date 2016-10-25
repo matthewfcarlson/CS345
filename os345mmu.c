@@ -105,21 +105,21 @@ int pageDataFrameOut(int upta){
     upte2 = MEMWORD(upta+1);
     
     if (DEFINED(upte1)){
-        upte1 = CLEAR_DEFINED(upte1);
+        upte1 = CLEAR_FRAME(CLEAR_DEFINED(upte1));
         //if we already have a entry in our swap space and it's dirty
         if (DEFINED(upte2) && DIRTY(upte2)){
-            pageNumber = accessPage(0, FRAME(upte2), PAGE_OLD_WRITE);
-            upte2 = CLEAR_PAGE(upte2);
-            upte2 = SET_PAGE(upte2,pageNumber);
+            pageNumber = accessPage(PAGE(upte2), FRAME(upte1), PAGE_OLD_WRITE);
+            
         }
         //otherwise we have a new page write
-        else if (DEFINED(upte2)){
-            pageNumber = accessPage(0, FRAME(upte2), PAGE_NEW_WRITE);
+        else if (!DEFINED(upte2)){
+            pageNumber = accessPage(0, FRAME(upte1), PAGE_NEW_WRITE);
             upte2 = CLEAR_PAGE(upte2);
             upte2 = SET_PAGE(upte2,pageNumber);
         }
         else{
             //we have a non dirty page already in swap space
+            printf("Nothing to do to swap out\n");
         }
         
     }
@@ -130,7 +130,7 @@ int pageDataFrameOut(int upta){
     
     //update the user page table entry
     MEMWORD(upta) = upte1;
-    MEMWORD(upta+1) = upte2;
+    MEMWORD(upta+1) =  SET_PAGED(upte2);
     
     return pageNumber;
 }
@@ -157,7 +157,7 @@ int checkRootEntryClock(int index, int notme, int mark){
         //printf("%x is referenced\n",index);
         return 0;
     }
-    printf("%x:%x is not pinned or referenced: %x\n",index,rpta,rpte1);
+    //printf("%x:%x is not pinned or referenced: %x\n",index,rpta,rpte1);
     //otherwise it's not referenced and good to be used
     return 1;
     
@@ -195,7 +195,7 @@ int checkUserEntryClock(int index, int notme, int mark){
 int getFrame(int notme)
 {
     static TID lastTask = -1;
-    int rpta,rpte,upt;
+    int rpta,rpte,upt,upta,upte;
     
 	int frame;
 	frame = getAvailableFrame();
@@ -236,10 +236,16 @@ int getFrame(int notme)
         advanceUserClock(upt);
         status = checkRootEntryClock(upt,notme,1);
     }
-    advanceUserClock(upt);
-    advanceRootClock();
+   
     
     printf("Clearing entries on UPT %x at index %x\n",upt, uptClockIndex);
+    upta = upt+uptClockIndex;
+    upte = MEMWORD(upta);
+    frame = FRAME(upte);
+    printf("Paged frame: %d out to to %d\n",frame,pageDataFrameOut(upta));
+    
+    advanceUserClock(upt);
+    advanceRootClock();
     
     
     //exit(1);
@@ -283,6 +289,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     if (DEFINED(rpte1))	{ // rpte defined
         //rpte defined
         memHits++;
+        rpte1 = SET_DIRTY(rpte1);
     }
     else{ // rpte undefined
         // 1. get a UPT frame from memory (may have to free up frame)
@@ -317,6 +324,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     upte2 = MEMWORD(upta+1);
     if (DEFINED(upte1)){	// upte defined
         memHits++;
+        upte1 = SET_DIRTY(upte1);
     }
     else {	// upte undefined
 
@@ -327,10 +335,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
+            printf("Paging in to %d\n",dataFrame);
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
-        {	upte1 = SET_DIRTY(upte1);  upte2 = 0;
+        {
+            upte2 = 0;
+            printf("Creating data frame\n");
             // undefine all upte's
         }
 
@@ -339,7 +350,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     MEMWORD(upta) = upte1 = SET_REF(upte1);	// set upt frame access bit
     MEMWORD(upta+1) = upte2;
     
-    //printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
+    printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
     
     //we know we have a hit here so get the memAccess and hits
     memAccess++;
