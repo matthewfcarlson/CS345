@@ -97,29 +97,6 @@ int advanceRootClock(){
     return i;
 }
 
-int advanceUserClock(int utpa_base){
-    int i, upta, upte;
-    int complete = 0;
-    while (complete == 0 && i < 32){
-        //advance the clock
-        printf("Advancing User clock from %x\n",uptClockIndex+utpa_base);
-        uptClockIndex= (uptClockIndex+2)%64;
-        upta = utpa_base + uptClockIndex;
-        upte = MEMWORD(upta);
-        if (PINNED(upte)){
-            //printf("Pinned %x\n",uptClockIndex);
-        }
-        if (DEFINED(upte)){
-            //printf("Taking entry %x\n",uptClockIndex);
-            complete = 1;
-        }
-        else{
-            //printf("Skipping entry %x: %x\n",uptClockIndex,upte);
-        }
-        i++;
-    }
-    return i;
-}
 
 //write the page out data
 //returns the page number
@@ -194,33 +171,6 @@ int checkRootEntryClock(int index, int notme, int mark){
     
 }
 
-//consolidate this function to the same thing
-//returns a true if viable
-//returns a false if not viable
-int checkUserEntryClock(int index, int notme, int mark){
-    int upta = uptClockIndex + index;
-    int upte1 = MEMWORD(upta);
-    //make sure we count this access
-    memAccess++;
-    //check whether it's in memory
-    if (PINNED(upte1)){
-        //printf("%x is pinned\n",index);
-        return 0;
-    }
-    else if (!DEFINED(upte1))	{ // rpte defined
-        //printf("%x is undefined \n",index);
-        return 0;
-    }
-    else if (REFERENCED(upte1)){ //if it's in use
-        if (mark) MEMWORD(upta) = upte1 = CLEAR_REF(upte1);
-        printf("%x is referenced\n",index);
-        return 0;
-    }
-    //printf("%x is not pinned or referenced: %x\n",index,upte1);
-    //otherwise it's not referenced and good to be used
-    return 1;
-    
-}
 //this function gets the first available frame
 //sends stuff out to swap space if we need to
 int getFrame(int notme)
@@ -243,44 +193,8 @@ int getFrame(int notme)
 
     outputClock();
 
-	//get the base address for the RPT
-    int oldClock = -1;
-    int status = checkRootEntryClock(rptClockIndex,notme,1);
-
-    while (status == 0 && rptClockIndex != oldClock){
-        
-        if (oldClock == -1) oldClock = rptClockIndex;
-        advanceRootClock();
-        status = checkRootEntryClock(rptClockIndex,notme,1);
-    }
-    //the root clock should now be on the first available entry
-    status = 0;
-    
-    rpta = tcb[curTask].RPT + rptClockIndex;
-    rpte = MEMWORD(rpta);
-    
-    
-    upt = (FRAME(rpte)<<6);
-    printf("Checking %x",upt);
-    int status2 = checkUserEntryClock(upt,notme,1);
-    oldClock = -1;
-    while (status2 == 0 && uptClockIndex != oldClock)
-    {
-        printf("Testing");
-        if (oldClock == -1) oldClock = uptClockIndex;
-        advanceUserClock(upt);
-        status2 = checkUserEntryClock(upt,notme,1);
-    }
-    outputClock();
-    
-    upta = upt+uptClockIndex;
-    upte = MEMWORD(upta);
-    frame = FRAME(upte);
-    
-    pageDataFrameOut(upta);
-    
-    advanceUserClock(upt);
-    advanceRootClock();
+    //advance clock
+	
     outputClock();
     
     

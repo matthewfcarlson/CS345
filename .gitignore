@@ -2,3 +2,5 @@ DerivedData/**
 *.xcodeproj
 .DS_Store
 CS345
+
+*.jpg
