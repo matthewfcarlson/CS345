@@ -47,13 +47,39 @@ int rptClockIndex;
 int uptClockIndex;
 
 
+
+void outputClock(){
+    int rpt,upt;
+    printf("Clock status:\n");
+    for (rpt = 0; rpt < 64; rpt+=2)
+    {
+        if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
+        {
+            printf((rptClockIndex == rpt)?">":" ");
+            outPTE("  RPT  =", rpt+TASK_RPT);
+            
+            for(upt = 0; upt < 64; upt+=2)
+            {
+                if (DEFINED(MEMWORD(rpt+TASK_RPT)) &&
+                    (DEFINED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt))
+                     || PAGED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt+1))))
+                {
+                    printf((uptClockIndex == upt)?">":" ");
+                    
+                    outPTE("    UPT=", (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt);
+                }
+            }
+        }
+    }
+
+}
 int advanceRootClock(){
     int i, rpta, rpte;
     int complete = 0;
     while (complete == 0 && i < 32){
         //advance the clock
         //printf("Advancing clock\n");
-        rptClockIndex= (rptClockIndex+2)%32;
+        rptClockIndex= (rptClockIndex+2)%64;
         rpta = tcb[curTask].RPT + rptClockIndex;
         rpte = MEMWORD(rpta);
         if (PINNED(rpte)){
@@ -76,8 +102,8 @@ int advanceUserClock(int utpa_base){
     int complete = 0;
     while (complete == 0 && i < 32){
         //advance the clock
-        //printf("Advancing clock\n");
-        uptClockIndex= (uptClockIndex+2)%32;
+        printf("Advancing User clock from %x\n",uptClockIndex+utpa_base);
+        uptClockIndex= (uptClockIndex+2)%64;
         upta = utpa_base + uptClockIndex;
         upte = MEMWORD(upta);
         if (PINNED(upte)){
@@ -99,23 +125,28 @@ int advanceUserClock(int utpa_base){
 //returns the page number
 int pageDataFrameOut(int upta){
 
-    int upte1,upte2,pageNumber;
+    int upte1,upte2,pageNumber,frame;
     
     upte1 = MEMWORD(upta);
     upte2 = MEMWORD(upta+1);
+    frame = FRAME(upte1);
+    pageNumber = PAGE(upte2);
+    
     
     if (DEFINED(upte1)){
         upte1 = CLEAR_FRAME(CLEAR_DEFINED(upte1));
         //if we already have a entry in our swap space and it's dirty
-        if (DEFINED(upte2) && DIRTY(upte2)){
-            pageNumber = accessPage(PAGE(upte2), FRAME(upte1), PAGE_OLD_WRITE);
+        if (DEFINED(upte2) && DIRTY(upte1)){
+            pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
+            printf("Paging old frame %d to page %d\n",frame,pageNumber);
             
         }
         //otherwise we have a new page write
         else if (!DEFINED(upte2)){
-            pageNumber = accessPage(0, FRAME(upte1), PAGE_NEW_WRITE);
+            pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
             upte2 = CLEAR_PAGE(upte2);
             upte2 = SET_PAGE(upte2,pageNumber);
+            printf("Paging new frame %d to page %d\n",frame,pageNumber);
         }
         else{
             //we have a non dirty page already in swap space
@@ -129,7 +160,7 @@ int pageDataFrameOut(int upta){
     }
     
     //update the user page table entry
-    MEMWORD(upta) = upte1;
+    MEMWORD(upta) = CLEAR_DIRTY(upte1);
     MEMWORD(upta+1) =  SET_PAGED(upte2);
     
     return pageNumber;
@@ -182,7 +213,7 @@ int checkUserEntryClock(int index, int notme, int mark){
     }
     else if (REFERENCED(upte1)){ //if it's in use
         if (mark) MEMWORD(upta) = upte1 = CLEAR_REF(upte1);
-        //printf("%x is referenced\n",index);
+        printf("%x is referenced\n",index);
         return 0;
     }
     //printf("%x is not pinned or referenced: %x\n",index,upte1);
@@ -195,7 +226,7 @@ int checkUserEntryClock(int index, int notme, int mark){
 int getFrame(int notme)
 {
     static TID lastTask = -1;
-    int rpta,rpte,upt,upta,upte;
+    int rpta,rpte,upt,upta,upte,rpt;
     
 	int frame;
 	frame = getAvailableFrame();
@@ -210,42 +241,47 @@ int getFrame(int notme)
         uptClockIndex = 0;
     }
 
-	printf("\nRunning the clock but not me %x!!!!!!!!!!!!\n",notme);
-    //get the base address for the RPT
+    outputClock();
+
+	//get the base address for the RPT
     int oldClock = -1;
     int status = checkRootEntryClock(rptClockIndex,notme,1);
 
     while (status == 0 && rptClockIndex != oldClock){
+        
         if (oldClock == -1) oldClock = rptClockIndex;
         advanceRootClock();
         status = checkRootEntryClock(rptClockIndex,notme,1);
     }
     //the root clock should now be on the first available entry
-
+    status = 0;
     
     rpta = tcb[curTask].RPT + rptClockIndex;
     rpte = MEMWORD(rpta);
     
-    printf("Clearing entries for RPT entry: %x at 0x%0x\n",rptClockIndex,rpta);
     
     upt = (FRAME(rpte)<<6);
-    status = checkUserEntryClock(upt,notme,1);
+    printf("Checking %x",upt);
+    int status2 = checkUserEntryClock(upt,notme,1);
     oldClock = -1;
-    while (status == 0 && uptClockIndex != oldClock){
+    while (status2 == 0 && uptClockIndex != oldClock)
+    {
+        printf("Testing");
         if (oldClock == -1) oldClock = uptClockIndex;
         advanceUserClock(upt);
-        status = checkRootEntryClock(upt,notme,1);
+        status2 = checkUserEntryClock(upt,notme,1);
     }
-   
+    outputClock();
     
-    printf("Clearing entries on UPT %x at index %x\n",upt, uptClockIndex);
     upta = upt+uptClockIndex;
     upte = MEMWORD(upta);
     frame = FRAME(upte);
-    printf("Paged frame: %d out to to %d\n",frame,pageDataFrameOut(upta));
+    
+    pageDataFrameOut(upta);
     
     advanceUserClock(upt);
     advanceRootClock();
+    outputClock();
     
     
     //exit(1);
@@ -280,7 +316,6 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     
     // turn off virtual addressing for system RAM
 	if (va < 0x3000) return &memory[va];
-#if MMU_ENABLE
 
     memAccess++;
 	rpta = tcb[curTask].RPT + RPTI(va);		// root page table address
@@ -335,22 +370,26 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            printf("Paging in to %d\n",dataFrame);
+            printf("Paging page %d in to page:%d,%x\n",SWAPPAGE(upte2),dataFrame,dataFrame<<6);
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
         {
             upte2 = 0;
-            printf("Creating data frame\n");
+            printf("Creating data frame %d,%x for VA: %x\n",dataFrame,dataFrame<<6, va);
             // undefine all upte's
+        }
+        
+        if (dataFrame == 0){
+            exit(-3);
         }
 
     }
     //update the user page table entry
-    MEMWORD(upta) = upte1 = SET_REF(upte1);	// set upt frame access bit
+    MEMWORD(upta) = upte1 = SET_DIRTY(SET_REF(upte1));	// set upt frame access bit
     MEMWORD(upta+1) = upte2;
     
-    printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
+    //printf("Getting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
     
     //we know we have a hit here so get the memAccess and hits
     memAccess++;
@@ -358,11 +397,6 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     
     return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];	// return physical address}
 
-	
-#else
-    //if we're not using a MMU, just use the regular old memory address
-	return &memory[va];
-#endif
 } // end getMemAdr
 
 
@@ -426,6 +460,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 	static int nextPage;						// swap page size
 	static int pageReads;						// page reads
 	static int pageWrites;						// page writes
+    int i;
 	static unsigned short int swapMemory[LC3_MAX_SWAP_MEMORY];
 
 	if ((nextPage >= LC3_MAX_PAGE) || (pnum >= LC3_MAX_PAGE))
@@ -441,7 +476,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 			memPageFaults = 0;					// memory faults
 			nextPage = 0;						// disk swap space size
 			pageReads = 0;						// disk page reads
-			pageWrites = 0;						// disk page writes
+            pageWrites = 0;						// disk page writes
 			return 0;
 
 		case PAGE_GET_SIZE:                    	// return swap size
@@ -454,7 +489,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 			return pageWrites;
 
 		case PAGE_GET_ADR:                    	// return page address
-			return (int)(&swapMemory[pnum<<6]);
+            return (int)(&swapMemory[pnum<<6]);
 
 		case PAGE_NEW_WRITE:                   // new write (Drops thru to write old)
 			pnum = nextPage++;
@@ -462,6 +497,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 		case PAGE_OLD_WRITE:                   // write
 			//printf("\n    (%d) Write frame %d (memory[%04x]) to page %d", p.PID, frame, frame<<6, pnum);
 			memcpy(&swapMemory[pnum<<6], &memory[frame<<6], 1<<7);
+            
 			pageWrites++;
 			return pnum;
 

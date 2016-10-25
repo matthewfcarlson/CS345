@@ -116,11 +116,17 @@ int P4_dumpLC3Mem(int argc, char* argv[])
 int P4_vmaccess(int argc, char* argv[])
 {
 	unsigned short int adr, rpt, upt;
+    static short number = 0;
 
 	printf("\nValidate arguments...");	// ?? validate arguments
 	adr = INTEGER(argv[1]);
 
-	printf(" = %04x", getMemAdr(adr, 1)-&MEMWORD(0));
+	printf(" = %04lx", getMemAdr(adr, 1)-&MEMWORD(0));
+    if (number>=0x10) number = 0;
+    else number++;
+    *getMemAdr(adr, 1) = ((0xd0 + number)<<8) + 0xee;
+    printf(" Set to %x ",((0xd0 + number)<<8) + 0xee);
+
 	for (rpt = 0; rpt < 64; rpt+=2)
 	{
 		if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
@@ -158,7 +164,7 @@ int P4_dumpPageMemory(int argc, char* argv[])
     }
     else{
         for (page = 0;page <5;page++){
-            printf("Page #%d\n",page);
+            displayPage(page);
         }
     }
 	return 0;
@@ -372,9 +378,10 @@ void outPTE(char* s, int pte)
 	if (PINNED(pte1)) flags[3] = 'P';
 
 	// output pte line
-	printf("\n%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
+	printf("%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
 	if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%d", FRAME(pte1));
 	if (DEFINED(pte2)) printf(" Page=%d", SWAPPAGE(pte2));
+    printf("\n");
 
 	return;
 } // end outPTE
@@ -456,7 +463,8 @@ void displayPage(int pn)
    short int *buffer;
    int i, ma;
    printf("\nPage %d", pn);
-   buffer = (int*)accessPage(pn, pn, 3);
+   buffer = (unsigned short int*)accessPage(pn, pn, PAGE_GET_ADR);
+    printf("Accessing %x swap at %x",buffer, &buffer[ma+i]);
    for (ma = 0; ma < 64;)
 	{
       printf("\n0x%04x:", ma);
