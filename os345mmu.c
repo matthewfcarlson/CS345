@@ -31,8 +31,17 @@
 // ***********************************************************************
 // mmu variables
 
+//the status of a frame table entry
+typedef enum frameEntryStatus{FRAME_EMPTY, DATA_FRAME, UPT_FRAME} FrameEntryStatus;
+//this is the struct that keeps track of a frame entry
+typedef struct frameEntry{
+    FrameEntryStatus status;
+    int entryAddress;
+} FrameEntry;
+
 // LC-3 memory
 unsigned short int memory[LC3_MAX_MEMORY];
+FrameEntry frameTable[LC3_FRAMES]; //this keeps track of each entry in the frame table
 
 // statistics
 int memAccess;						// memory accesses
@@ -43,19 +52,32 @@ int getFrame(int);
 int getAvailableFrame(void);
 extern TCB tcb[];					// task control block
 extern int curTask;					// current task #
-int rptClockIndex;
-int uptClockIndex;
+int clockIndex;
 
 
+void outputFrameTable(){
+    int frame;
+    printf("Frame Table:");
+    for (frame = 0; frame<LC3_FRAMES;frame++){
+        if (frameTable[frame].status == FRAME_EMPTY) continue;
+        printf("\n%c%4d = Address:0x%0x = ",(clockIndex==frame)?'>':' ',frame,frameTable[frame].entryAddress);
+        switch(frameTable[frame].status){
+            case UPT_FRAME: printf("UPT Frame");break;
+            case DATA_FRAME: printf("Data Frame");break;
+            default: break;
+        }
+    }
+    printf("\n");
+}
 
-void outputClock(){
+//outputs the RPT entries and
+void outputPageTables(){
     int rpt,upt;
     printf("Clock status:\n");
     for (rpt = 0; rpt < 64; rpt+=2)
     {
         if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
         {
-            printf((rptClockIndex == rpt)?">":" ");
             outPTE("  RPT  =", rpt+TASK_RPT);
             
             for(upt = 0; upt < 64; upt+=2)
@@ -64,7 +86,7 @@ void outputClock(){
                     (DEFINED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt))
                      || PAGED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt+1))))
                 {
-                    printf((uptClockIndex == upt)?">":" ");
+                    printf((clockIndex == (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt)?">":" ");
                     
                     outPTE("    UPT=", (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt);
                 }
@@ -72,29 +94,6 @@ void outputClock(){
         }
     }
 
-}
-int advanceRootClock(){
-    int i, rpta, rpte;
-    int complete = 0;
-    while (complete == 0 && i < 32){
-        //advance the clock
-        //printf("Advancing clock\n");
-        rptClockIndex= (rptClockIndex+2)%64;
-        rpta = tcb[curTask].RPT + rptClockIndex;
-        rpte = MEMWORD(rpta);
-        if (PINNED(rpte)){
-            //printf("Pinned %x\n",rptClockIndex);
-        }
-        if (DEFINED(rpte)){
-            //printf("Taking entry %x\n",rptClockIndex);
-            complete = 1;
-        }
-        else{
-            //printf("Skipping entry %x: %x\n",rptClockIndex,rpte);
-        }
-        i++;
-    }
-    return i;
 }
 
 
@@ -148,6 +147,7 @@ int pageDataFrameOut(int upta){
 int checkRootEntryClock(int index, int notme, int mark){
     int rpta = tcb[curTask].RPT + index;
     int rpte1 = MEMWORD(rpta);
+    
     //make sure we count this access
     memAccess++;
     //check whether it's in memory
@@ -176,7 +176,7 @@ int checkRootEntryClock(int index, int notme, int mark){
 int getFrame(int notme)
 {
     static TID lastTask = -1;
-    int rpta,rpte,upt,upta,upte,rpt;
+    //int rpta,rpte,upt,upta,upte,rpt;
     
 	int frame;
 	frame = getAvailableFrame();
@@ -187,15 +187,14 @@ int getFrame(int notme)
     //check if we've changed tasks
     if (lastTask != curTask){
         lastTask = curTask;
-        rptClockIndex = 0;
-        uptClockIndex = 0;
+        clockIndex = 192;
     }
 
-    outputClock();
+    outputFrameTable();
+    outputPageTables();
 
     //advance clock
 	
-    outputClock();
     
     
     //exit(1);
@@ -261,6 +260,10 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     //get the frame number
     uptFrame = FRAME(rpte1);
     
+    //update the frame Table
+    frameTable[uptFrame].status = UPT_FRAME;
+    frameTable[uptFrame].entryAddress = rpta;
+    
     //update the root page table entries
     //MEMWORD(rpta) = rpte1 = SET_REF(SET_PINNED(rpte1));	// set rpt frame access bit
     MEMWORD(rpta) = rpte1 = SET_REF(rpte1);	// set rpt frame access bit
@@ -299,6 +302,14 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         }
 
     }
+    
+    //get the frame number
+    dataFrame = FRAME(upte1);
+    
+    //update the frame Table
+    frameTable[dataFrame].status = DATA_FRAME;
+    frameTable[dataFrame].entryAddress = upta;
+    
     //update the user page table entry
     MEMWORD(upta) = upte1 = SET_DIRTY(SET_REF(upte1));	// set upt frame access bit
     MEMWORD(upta+1) = upte2;
@@ -321,7 +332,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 //        = 1 -> just add bits
 //
 void setFrameTableBits(int flg, int sf, int ef)
-{	int i, data;
+{	int i, data = 0;
 	int adr = LC3_FBT-1;             // index to frame bit table
 	int fmask = 0x0001;              // bit mask
 
@@ -345,7 +356,7 @@ void setFrameTableBits(int flg, int sf, int ef)
 // get frame from frame bit table (else return -1)
 int getAvailableFrame()
 {
-	int i, data;
+	int i, data = 0;
 	int adr = LC3_FBT - 1;				// index to frame bit table
 	int fmask = 0x0001;					// bit mask
 
@@ -374,8 +385,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 	static int nextPage;						// swap page size
 	static int pageReads;						// page reads
 	static int pageWrites;						// page writes
-    int i;
-	static unsigned short int swapMemory[LC3_MAX_SWAP_MEMORY];
+    static unsigned short int swapMemory[LC3_MAX_SWAP_MEMORY];
 
 	if ((nextPage >= LC3_MAX_PAGE) || (pnum >= LC3_MAX_PAGE))
 	{
