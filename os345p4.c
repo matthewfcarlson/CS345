@@ -98,6 +98,7 @@ int P4_project4(int argc, char* argv[])					// project 5
             
             
         }
+        printf("\nDone.\n");
         return 0;
     }
     // initialize lc3 memory
@@ -251,7 +252,7 @@ int P4_initMemory(int argc, char* argv[])
 	memHits = 0;
 	memPageFaults = 0;
 
-	accessPage(0, 0, PAGE_INIT);
+	accessPage(0,(highAdr>>6)-LC3_MEM_FRAME, PAGE_INIT);
 	//nextPage = 0;
 	//pageReads = 0;
 	//pageWrites = 0;
