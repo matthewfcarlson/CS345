@@ -59,23 +59,50 @@ void lookVM(int va);
 // project4 command
 //
 //
-int test_address[] = {0x3000, 0x3050, 0x3090, 0x4000};
-int values[] = {0x50, 0x90, 0x50, 0x40, 0x12};
+#define TEST_ENTRIES 5
+int test_address[TEST_ENTRIES] = {0x3000, 0x3050, 0x3090, 0x4000, 0x3010, 0x4c00, 0x3015, 0x4240, 0x5000};
+int values[TEST_ENTRIES] = {0x50, 0x90, 0x50, 0x40, 0x12};
 int P4_project4(int argc, char* argv[])					// project 5
 {
     int address,value;
-	// initialize lc3 memory
-	P4_initMemory(argc, argv);
+    static int rand_address = 0x4000;
+    extern long swapCount;
+    extern int MMUdebugMode;
+    
+
     
     if (argc == 1){
+            MMUdebugMode = 1;
+        srand((unsigned int)swapCount);
         
-        for (int i=0;i<4;i++){
+        for (int i=0;i<TEST_ENTRIES;i++){
+            
             address = test_address[i];
             value = values[i];
+            if (address == 0) address = rand_address;
+            if (value == 0) value = rand() % 0xfff + 0xf000;
+            rand_address+= rand() % 3 + 1;
+            test_address[i] = address;
+            values[i] = value;
+            printf("\nSetting 0x%0x to %x",address,value);
             *getMemAdr(address, 1) = value;
+            if (value != *getMemAdr(address, 1)) printf(" ERROR");
+        }
+        for (int i=0;i<TEST_ENTRIES;i++){
+            
+            address = test_address[i];
+            value = *getMemAdr(address, 1);
+            
+            printf("\nGetting 0x%0x and it's %x vs %x ",address,value,values[i]);
+            if (value != values[i]) printf(":ERROR");
+            
+            
         }
         return 0;
     }
+    // initialize lc3 memory
+    P4_initMemory(argc, argv);
+
 
 	// start lc3 tasks
 	loadLC3File("memtest.hex");

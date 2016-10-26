@@ -53,27 +53,49 @@ int getAvailableFrame(void);
 extern TCB tcb[];					// task control block
 extern int curTask;					// current task #
 int clockIndex;
+int MMUdebugMode = 0;
+
+
+//this function evaluates whether a user page table is empty or not
+int canPageOutUserFrameTable(int upta){
+    int upt_index, upte;
+    //check all 32 entries
+    for (upt_index = 0; upt_index < 64; upt_index+=2){
+        upte = MEMWORD(upta+upt_index);
+        //we found an entry with something in memory so we can't page it out
+        if (DEFINED(upte)) return 0;
+    }
+    //we didn't find anything
+    return 1;
+}
 
 
 void outputFrameTable(){
-    int frame;
+    int frame, entry;
     printf("Frame Table:");
     for (frame = 0; frame<LC3_FRAMES;frame++){
         if (frameTable[frame].status == FRAME_EMPTY) continue;
         printf("\n%c%4d = Address:0x%0x = ",(clockIndex==frame)?'>':' ',frame,frameTable[frame].entryAddress);
         switch(frameTable[frame].status){
-            case UPT_FRAME: printf("UPT Frame");break;
-            case DATA_FRAME: printf("Data Frame");break;
+            case UPT_FRAME: printf("UPT Frame ");break;
+            case DATA_FRAME: printf("DataFrame ");break;
             default: break;
         }
+        entry = MEMWORD(frameTable[frame].entryAddress);
+        printf(REFERENCED(entry)?"R":"-");
+        printf(PINNED(entry)?"P":"-");
+        printf(DIRTY(entry)?"D":"-");
+        entry = MEMWORD(frameTable[frame].entryAddress+1);
+        if (DEFINED(entry))
+            printf(" Page: %d",PAGE(entry));
     }
-    printf("\n");
+    printf("\n\n");
 }
 
 //outputs the RPT entries and
 void outputPageTables(){
     int rpt,upt;
-    printf("Clock status:\n");
+    printf("\nClock status:");
     for (rpt = 0; rpt < 64; rpt+=2)
     {
         if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
@@ -93,6 +115,7 @@ void outputPageTables(){
             }
         }
     }
+    printf("\n");
 
 }
 
@@ -114,7 +137,7 @@ int pageDataFrameOut(int upta){
         //if we already have a entry in our swap space and it's dirty
         if (DEFINED(upte2) && DIRTY(upte1)){
             pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
-            //printf("Paging old frame %d to page %d\n",frame,pageNumber);
+            if (MMUdebugMode) printf("Paging old frame %d to page %d\n",frame,pageNumber);
             
         }
         //otherwise we have a new page write
@@ -122,7 +145,7 @@ int pageDataFrameOut(int upta){
             pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
             upte2 = CLEAR_PAGE(upte2);
             upte2 = SET_PAGE(upte2,pageNumber);
-            //printf("Paging new frame %d to page %d\n",frame,pageNumber);
+            if (MMUdebugMode) printf("Paging new frame %d to page %d\n",frame,pageNumber);
         }
         else{
             //we have a non dirty page already in swap space
@@ -183,7 +206,8 @@ int getFrame(int notme)
     int entryAddress;
     int status = 0;
     int clockCycles = 0;
-    
+    int frameAddress;
+    int freeFrame;
 	int frame;
 	frame = getAvailableFrame();
 	if (frame >=0) return frame;
@@ -196,8 +220,8 @@ int getFrame(int notme)
         clockIndex = 192;
     }
 
-    //outputFrameTable();
-    //outputPageTables();
+    //if (MMUdebugMode) outputFrameTable();
+    //if (MMUdebugMode) outputPageTables();
 
     //manage the clock
     entryAddress = frameTable[clockIndex].entryAddress;
@@ -219,14 +243,29 @@ int getFrame(int notme)
     }
     
     frame = clockIndex;
+    
+    //page out the data
+    pageDataFrameOut(entryAddress);
+    
+    if (frameTable[frame].status == DATA_FRAME){
+        frameAddress =frameTable[frame].entryAddress & 0xffc0;
+        freeFrame = frameTable[frame].entryAddress >> 6;
+        //printf("Figure out if UPT from %x, %x, %d is empty, if so we can set it to unpinned\n",frameTable[frame].entryAddress,frameAddress, freeFrame);
+        if (canPageOutUserFrameTable(frameAddress)){
+            printf("Page Table can be paged out");
+        }
+        else{
+            printf("Page Table cannot be paged out");
+        }
+    }
     frameTable[frame].status = FRAME_EMPTY;
     
-    pageDataFrameOut(entryAddress);
+    
     
     //increment the clock
     clockIndex = (clockIndex+1)%LC3_FRAMES;
-    //outputFrameTable();
-    //outputPageTables();
+    //if (MMUdebugMode) outputFrameTable();
+    //if (MMUdebugMode) outputPageTables();
     //printf("\n");
     
     //exit(1);
@@ -280,6 +319,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(rpte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
+            if (MMUdebugMode) printf("Paging table page %d in to frame:%d\n",SWAPPAGE(upte2),dataFrame);
             accessPage(SWAPPAGE(rpte2), uptFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
@@ -318,7 +358,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            //printf("Paging page %d in to page:%d,%x\n",SWAPPAGE(upte2),dataFrame,dataFrame<<6);
+            if (MMUdebugMode) printf("Paging data page %d in to frame:%d\n",SWAPPAGE(upte2),dataFrame);
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
@@ -417,6 +457,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 	static int pageReads;						// page reads
 	static int pageWrites;						// page writes
     static unsigned short int swapMemory[LC3_MAX_SWAP_MEMORY];
+    int i;
 
 	if ((nextPage >= LC3_MAX_PAGE) || (pnum >= LC3_MAX_PAGE))
 	{
@@ -432,6 +473,7 @@ int accessPage(int pnum, int frame, int rwnFlg)
 			nextPage = 0;						// disk swap space size
 			pageReads = 0;						// disk page reads
             pageWrites = 0;						// disk page writes
+            for (i = 0;i<LC3_FRAMES;i++) frameTable[i].status = FRAME_EMPTY;
 			return 0;
 
 		case PAGE_GET_SIZE:                    	// return swap size
