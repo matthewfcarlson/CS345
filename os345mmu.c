@@ -114,7 +114,7 @@ int pageDataFrameOut(int upta){
         //if we already have a entry in our swap space and it's dirty
         if (DEFINED(upte2) && DIRTY(upte1)){
             pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
-            printf("Paging old frame %d to page %d\n",frame,pageNumber);
+            //printf("Paging old frame %d to page %d\n",frame,pageNumber);
             
         }
         //otherwise we have a new page write
@@ -122,11 +122,11 @@ int pageDataFrameOut(int upta){
             pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
             upte2 = CLEAR_PAGE(upte2);
             upte2 = SET_PAGE(upte2,pageNumber);
-            printf("Paging new frame %d to page %d\n",frame,pageNumber);
+            //printf("Paging new frame %d to page %d\n",frame,pageNumber);
         }
         else{
             //we have a non dirty page already in swap space
-            printf("Nothing to do to swap out\n");
+            //printf("Nothing to do to swap out\n");
         }
         
     }
@@ -144,24 +144,27 @@ int pageDataFrameOut(int upta){
 
 //returns a true if viable
 //returns a false if not viable
-int checkRootEntryClock(int index, int notme, int mark){
-    int rpta = tcb[curTask].RPT + index;
+int checkPageTableEntry(int index,int mark){
+    int rpta = index;
     int rpte1 = MEMWORD(rpta);
     
     //make sure we count this access
     memAccess++;
     //check whether it's in memory
+    if (!DEFINED(rpte1))	{ // rpte defined
+        //printf("%x is undefined \n",index);
+        return 0;
+    }
+    
+    //mark it
+    if (mark) MEMWORD(rpta) = rpte1 = CLEAR_REF(rpte1);
     
     if (PINNED(rpte1)){
        // printf("%x is pinned\n",index);
         return 0;
     }
-    else if (!DEFINED(rpte1))	{ // rpte defined
-        //printf("%x is undefined \n",index);
-        return 0;
-    }
     else if (REFERENCED(rpte1)){ //if it's in use
-        if (mark) MEMWORD(rpta) = rpte1 = CLEAR_REF(rpte1);
+        
         //printf("%x is referenced\n",index);
         return 0;
     }
@@ -177,6 +180,9 @@ int getFrame(int notme)
 {
     static TID lastTask = -1;
     //int rpta,rpte,upt,upta,upte,rpt;
+    int entryAddress;
+    int status = 0;
+    int clockCycles = 0;
     
 	int frame;
 	frame = getAvailableFrame();
@@ -190,12 +196,38 @@ int getFrame(int notme)
         clockIndex = 192;
     }
 
-    outputFrameTable();
-    outputPageTables();
+    //outputFrameTable();
+    //outputPageTables();
 
-    //advance clock
-	
+    //manage the clock
+    entryAddress = frameTable[clockIndex].entryAddress;
+    if (frameTable[clockIndex].status == FRAME_EMPTY || !checkPageTableEntry(entryAddress, 1)){
+        //if we aren't already on a good address.
+        while (status == 0 && clockCycles < LC3_FRAMES + 5){
+            clockIndex = (clockIndex+1)%LC3_FRAMES;
+
+            if (frameTable[clockIndex].status != FRAME_EMPTY){
+                entryAddress = frameTable[clockIndex].entryAddress;
+                if (checkPageTableEntry(entryAddress, 1)) status = 1;
+            }
+            clockCycles++;
+        }
+    }
+    if (clockCycles > LC3_FRAMES){
+        printf("\nERROR: We can't find a frame to replace\n");
+        exit(0);
+    }
     
+    frame = clockIndex;
+    frameTable[frame].status = FRAME_EMPTY;
+    
+    pageDataFrameOut(entryAddress);
+    
+    //increment the clock
+    clockIndex = (clockIndex+1)%LC3_FRAMES;
+    //outputFrameTable();
+    //outputPageTables();
+    //printf("\n");
     
     //exit(1);
 
@@ -265,8 +297,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     frameTable[uptFrame].entryAddress = rpta;
     
     //update the root page table entries
-    //MEMWORD(rpta) = rpte1 = SET_REF(SET_PINNED(rpte1));	// set rpt frame access bit
-    MEMWORD(rpta) = rpte1 = SET_REF(rpte1);	// set rpt frame access bit
+    MEMWORD(rpta) = rpte1 = SET_PINNED(SET_REF(rpte1));	// set rpt frame access bit
     MEMWORD(rpta+1) = rpte2;
     
     //User page table entry
@@ -287,13 +318,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            printf("Paging page %d in to page:%d,%x\n",SWAPPAGE(upte2),dataFrame,dataFrame<<6);
+            //printf("Paging page %d in to page:%d,%x\n",SWAPPAGE(upte2),dataFrame,dataFrame<<6);
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
         {
             upte2 = 0;
-            printf("Creating data frame %d,%x for VA: %x\n",dataFrame,dataFrame<<6, va);
+            //printf("Creating data frame %d,%x for VA: %x\n",dataFrame,dataFrame<<6, va);
             // undefine all upte's
         }
         

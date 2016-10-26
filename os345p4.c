@@ -59,10 +59,23 @@ void lookVM(int va);
 // project4 command
 //
 //
+int test_address[] = {0x3000, 0x3050, 0x3090, 0x4000};
+int values[] = {0x50, 0x90, 0x50, 0x40, 0x12};
 int P4_project4(int argc, char* argv[])					// project 5
 {
+    int address,value;
 	// initialize lc3 memory
 	P4_initMemory(argc, argv);
+    
+    if (argc == 1){
+        
+        for (int i=0;i<4;i++){
+            address = test_address[i];
+            value = values[i];
+            *getMemAdr(address, 1) = value;
+        }
+        return 0;
+    }
 
 	// start lc3 tasks
 	loadLC3File("memtest.hex");
@@ -115,16 +128,25 @@ int P4_dumpLC3Mem(int argc, char* argv[])
 // vma <a>
 int P4_vmaccess(int argc, char* argv[])
 {
-	unsigned short int adr, rpt, upt;
+	unsigned short int adr, rpt, upt,value;
     static short number = 0;
 
 	printf("\nValidate arguments...");	// ?? validate arguments
 	adr = INTEGER(argv[1]);
-
-	printf(" = %04lx", getMemAdr(adr, 1)-&MEMWORD(0));
+    
     if (number>=0x10) number = 0;
     else number++;
-    *getMemAdr(adr, 1) = ((0xd0 + number)<<8) + 0xee;
+
+    if (argc == 3){
+        value = INTEGER(argv[2]);
+    }
+    else{
+        value = ((0xd0 + number)<<8) + 0xee;
+    }
+
+	printf(" = %04lx", getMemAdr(adr, 1)-&MEMWORD(0));
+    
+    *getMemAdr(adr, 1) = value;
     printf(" Set to %x ",((0xd0 + number)<<8) + 0xee);
 
 	for (rpt = 0; rpt < 64; rpt+=2)
@@ -297,9 +319,22 @@ int P4_rootPageTable(int argc, char* argv[])
 // **************************************************************************
 // **************************************************************************
 // upt <p><#>    Display process user page table
+void outputPageTables();
+void outputFrameTable();
 int P4_userPageTable(int argc, char* argv[])
 {
 	int rpt, upt;
+    
+    if (argc == 1){
+        outputFrameTable();
+
+        
+        return 0;
+    }
+    if (argc == 2){
+        outputPageTables();
+        return 0;
+    }
 
 	printf("\nValidate arguments...");	// ?? validate arguments
 	rpt = INTEGER(argv[1]);
