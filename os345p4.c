@@ -90,7 +90,7 @@ int P4_project4(int argc, char* argv[])					// project 5
 
     
     if (argc == 1){
-        //MMUdebugMode = 1;
+        MMUdebugMode = 1;
         srand((unsigned int)swapCount);
         
         for (int i=0;i<TEST_ENTRIES;i++){
@@ -104,7 +104,7 @@ int P4_project4(int argc, char* argv[])					// project 5
             values[i] = value;
             printf("\nSetting 0x%0x to %x",address,value);
             *getMemAdr(address, 1) = value;
-            outputPageTables();
+            //outputPageTables();
             
         }
         /*for (int i=0;i<TEST_ENTRIES;i++){
