@@ -59,8 +59,25 @@ void lookVM(int va);
 // project4 command
 //
 //
-#define TEST_ENTRIES 5
-int test_address[TEST_ENTRIES] = {0x3000, 0x3050, 0x3090, 0x4000, 0x3010, 0x4c00, 0x3015, 0x4240, 0x5000};
+#define TEST_ENTRIES 20
+/*
+vma 0x3000
+vma 0x3001
+vma 0x3040
+vma 0x3041
+vma 0xEFD2
+vma 0xD851
+vma 0xD833
+vma 0x3833
+vma 0x3000
+vma 0xF745
+vma 0xEFF0
+vma 0xD807
+vma 0x3040
+vma 0xFFC8
+vma 0x303C
+*/
+int test_address[TEST_ENTRIES] = {0x3000, 0x3001, 0x3040, 0x3041, 0xEFD2,0xD851,0xD833, 0x3833,0x3000, 0xF745, 0xEff0,0xD807, 0x3040};
 int values[TEST_ENTRIES] = {0x50, 0x90, 0x50, 0x40, 0x12};
 int P4_project4(int argc, char* argv[])					// project 5
 {
@@ -68,11 +85,12 @@ int P4_project4(int argc, char* argv[])					// project 5
     static int rand_address = 0x4000;
     extern long swapCount;
     extern int MMUdebugMode;
+    extern void outputPageTables();
     
 
     
     if (argc == 1){
-            MMUdebugMode = 1;
+        //MMUdebugMode = 1;
         srand((unsigned int)swapCount);
         
         for (int i=0;i<TEST_ENTRIES;i++){
@@ -86,9 +104,10 @@ int P4_project4(int argc, char* argv[])					// project 5
             values[i] = value;
             printf("\nSetting 0x%0x to %x",address,value);
             *getMemAdr(address, 1) = value;
-            if (value != *getMemAdr(address, 1)) printf(" ERROR");
+            outputPageTables();
+            
         }
-        for (int i=0;i<TEST_ENTRIES;i++){
+        /*for (int i=0;i<TEST_ENTRIES;i++){
             
             address = test_address[i];
             value = *getMemAdr(address, 1);
@@ -97,7 +116,7 @@ int P4_project4(int argc, char* argv[])					// project 5
             if (value != values[i]) printf(":ERROR");
             
             
-        }
+        }*/
         printf("\nDone.\n");
         return 0;
     }
@@ -175,7 +194,7 @@ int P4_vmaccess(int argc, char* argv[])
 	printf(" = %04lx", getMemAdr(adr, 1)-&MEMWORD(0));
     
     *getMemAdr(adr, 1) = value;
-    printf(" Set to %x ",((0xd0 + number)<<8) + 0xee);
+    printf(" Set to %x\n ",((0xd0 + number)<<8) + 0xee);
 
 	for (rpt = 0; rpt < 64; rpt+=2)
 	{
@@ -442,8 +461,8 @@ void outPTE(char* s, int pte)
 
 	// output pte line
 	printf("%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
-	if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%d", FRAME(pte1));
-	if (DEFINED(pte2)) printf(" Page=%d", SWAPPAGE(pte2));
+	if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%3d", FRAME(pte1));
+	if (DEFINED(pte2)) printf(" Page=%4d", SWAPPAGE(pte2));
     printf("\n");
 
 	return;
