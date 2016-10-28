@@ -89,7 +89,7 @@ int P4_project4(int argc, char* argv[])					// project 5
     
 
     
-    if (argc == 1){
+    /*if (argc == 1){
         MMUdebugMode = 1;
         srand((unsigned int)swapCount);
         
@@ -107,7 +107,7 @@ int P4_project4(int argc, char* argv[])					// project 5
             //outputPageTables();
             
         }
-        /*for (int i=0;i<TEST_ENTRIES;i++){
+        for (int i=0;i<TEST_ENTRIES;i++){
             
             address = test_address[i];
             value = *getMemAdr(address, 1);
@@ -116,23 +116,23 @@ int P4_project4(int argc, char* argv[])					// project 5
             if (value != values[i]) printf(":ERROR");
             
             
-        }*/
+        }
         printf("\nDone.\n");
         return 0;
-    }
+    }*/
     // initialize lc3 memory
     P4_initMemory(argc, argv);
 
 
 	// start lc3 tasks
 	loadLC3File("memtest.hex");
-	loadLC3File("crawler.hex");
+	//loadLC3File("crawler.hex");
 
 	loadLC3File("memtest.hex");
-	loadLC3File("crawler.hex");
-
-	loadLC3File("memtest.hex");
-	loadLC3File("crawler.hex");
+	//loadLC3File("crawler.hex");
+	
+    //loadLC3File("crawler.hex");
+    //loadLC3File("memtest.hex");
 
 	return 0;
 }

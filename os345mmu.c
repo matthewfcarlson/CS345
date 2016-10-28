@@ -28,6 +28,8 @@
 #include "os345.h"
 #include "os345lc3.h"
 
+#define DEBUG_SWAP 0
+
 // ***********************************************************************
 // mmu variables
 
@@ -74,7 +76,7 @@ int canPageOutUserFrameTable(int upta){
     return 1;
 }
 
-
+//this function outputs the current frame
 void outputFrameTable(){
     int frame, entry;
     printf("\nFrame Table:");
@@ -147,7 +149,7 @@ int pageDataFrameOut(int upta){
         //if we already have a entry in our swap space and it's dirty
         if (DEFINED(upte2) && DIRTY(upte1)){
             pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
-            if (MMUdebugMode||1) printf("Paging old frame %d to page %d\n",frame,pageNumber);
+            if (MMUdebugMode||DEBUG_SWAP) printf("Paging old frame %d to page %d\n",frame,pageNumber);
             
         }
         //otherwise we have a new page write
@@ -155,7 +157,7 @@ int pageDataFrameOut(int upta){
             pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
             upte2 = CLEAR_PAGE(upte2);
             upte2 = SET_PAGE(upte2,pageNumber);
-            if (MMUdebugMode||1) printf("Paging new frame %d to page %d\n",frame,pageNumber);
+            if (MMUdebugMode||DEBUG_SWAP) printf("Paging new frame %d to page %d\n",frame,pageNumber);
         }
         else{
             //we have a non dirty page already in swap space
@@ -206,11 +208,9 @@ int checkPageTableEntry(int index,int mark){
         return 0;
     }
     else if (REFERENCED(rpte1)){ //if it's in use
-        
         //printf("%x is referenced\n",index);
         return 0;
     }
-    //printf("%x:%x is not pinned or referenced: %x\n",index,rpta,rpte1);
     //otherwise it's not referenced and good to be used
     return 1;
     
@@ -224,7 +224,6 @@ void advanceClock(){
 //sends stuff out to swap space if we need to
 int getFrame(int notme)
 {
-    static TID lastTask = -1;
     //int rpta,rpte,upt,upta,upte,rpt;
     int entryAddress;
     int status = 0;
@@ -242,14 +241,9 @@ int getFrame(int notme)
 	// run clock
     clockRan = 1;
     
-    //check if we've changed tasks
-    if (lastTask != curTask){
-        lastTask = curTask;
-        clockIndex = 192;
-    }
-
+    
     if (MMUdebugMode) {
-        printf("\nRUNNING CLOCK");
+        printf("\nRUNNING CLOCK for %d",curTask);
         outputFrameTable();
         outputPageTables();
         
@@ -303,13 +297,13 @@ int getFrame(int notme)
         }
     }
     
-    if (MMUdebugMode || 1) printf("\nSetting %d frame to empty",frame);
+    if (MMUdebugMode || DEBUG_SWAP) printf("\nSetting %d frame to empty",frame);
     frameTable[frame].status = FRAME_EMPTY;
     
     if (frame == notme){
         printf("Trying to page out the notme frame %d\nFATAL ERROR",notme);
         longjmp(reset_context, POWER_DOWN_ERROR);
-        exit(0);
+        //exit(0);
     }
     
     
@@ -375,7 +369,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
             accessPage(SWAPPAGE(rpte2), uptFrame, PAGE_READ);
         }
         else	// define new upt frame and reference from rpt
-        {	rpte1 = SET_DIRTY(rpte1);
+        {
             rpte2 = 0;
             // undefine all upte's
         }
@@ -390,7 +384,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         outputPageTables();
         printf("\n\nBAD FRAME\n");
         longjmp(reset_context, POWER_DOWN_ERROR);
-        exit(0);
+        //exit(0);
     }
     
     
@@ -399,7 +393,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     frameTable[uptFrame].entryAddress = rpta;
     
     //update the root page table entries
-    MEMWORD(rpta) = rpte1 = SET_PINNED(SET_REF(rpte1));	// set rpt frame access bit
+    MEMWORD(rpta) = rpte1 = SET_DIRTY(SET_PINNED(SET_REF(rpte1)));	// set rpt frame access bit
     MEMWORD(rpta+1) = rpte2;
     
     //User page table entry
@@ -446,7 +440,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         //outputPageTables();
         printf("\n\nBAD FRAME\n");
         longjmp(reset_context, POWER_DOWN_ERROR);
-        exit(0);
+        //exit(0);
     }
     
     //update the frame Table
@@ -454,7 +448,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     frameTable[dataFrame].entryAddress = upta;
     
     //update the root page table entry
-    MEMWORD(rpta) = rpte1 = SET_PINNED(SET_REF(rpte1));	// set rpt frame access bit
+    MEMWORD(rpta) = rpte1 = SET_DIRTY(SET_PINNED(SET_REF(rpte1)));	// set rpt frame access bit
     //update the user page table entry
     MEMWORD(upta) = upte1 = SET_DIRTY(SET_REF(upte1));	// set upt frame access bit
     MEMWORD(upta+1) = upte2;
