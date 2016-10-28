@@ -86,11 +86,10 @@ int P4_project4(int argc, char* argv[])					// project 5
     extern long swapCount;
     extern int MMUdebugMode;
     extern void outputPageTables();
-    
 
     
     /*if (argc == 1){
-        MMUdebugMode = 1;
+     
         srand((unsigned int)swapCount);
         
         for (int i=0;i<TEST_ENTRIES;i++){
@@ -123,13 +122,18 @@ int P4_project4(int argc, char* argv[])					// project 5
     // initialize lc3 memory
     P4_initMemory(argc, argv);
 
+    
 
 	// start lc3 tasks
-	loadLC3File("memtest.hex");
-	//loadLC3File("crawler.hex");
+	loadLC3File("crawler.hex");
+    loadLC3File("memtest.hex");
+	
 
-	loadLC3File("memtest.hex");
 	//loadLC3File("crawler.hex");
+    //loadLC3File("crawler.hex");
+    //loadLC3File("crawler.hex");
+    //loadLC3File("crawler.hex");
+    //loadLC3File("crawler.hex");
 	
     //loadLC3File("crawler.hex");
     //loadLC3File("memtest.hex");

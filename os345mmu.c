@@ -27,8 +27,11 @@
 #include <assert.h>
 #include "os345.h"
 #include "os345lc3.h"
+#include <unistd.h>
 
-#define DEBUG_SWAP 0
+#define DEBUG_SWAP 1
+#define DEBUG_MULTI 0
+#define DEBUG_PAGE 1
 
 // ***********************************************************************
 // mmu variables
@@ -59,6 +62,8 @@ int clockIndex;
 int MMUdebugMode = 0;
 int clockRan = 0;
 int lastFramePaged = 0;
+int lastPageOut = -1;
+int lastPageIn = -1;
 
 extern jmp_buf reset_context;
 
@@ -79,16 +84,31 @@ int canPageOutUserFrameTable(int upta){
 //this function outputs the current frame
 void outputFrameTable(){
     int frame, entry;
-    printf("\nFrame Table:");
+    printf("\nFrame Table: Clock (%d/%d)",clockIndex,totalFrames);
     for (frame = 0; frame<LC3_FRAMES;frame++){
-        if (frameTable[frame].status == FRAME_EMPTY) continue;
-        printf("\n%c%4d = Entry Address:0x%0x(%3d) = ",(clockIndex==frame)?'>':' ',frame,frameTable[frame].entryAddress,frameTable[frame].entryAddress>>6);
+        if (frameTable[frame].status == FRAME_EMPTY && (frame < 192 || frame > totalFrames)) continue;
+        if (frameTable[frame].status == FRAME_EMPTY) {
+            printf("\n %4d : Empty",frame);
+            continue;
+        }
+        printf("\n%c%4d = Entry Address:0x%0x",(clockIndex==frame)?'>':' ',frame,frameTable[frame].entryAddress);
+        if ((frameTable[frame].entryAddress>>6) >= 192)
+            printf("(%3d) = ",frameTable[frame].entryAddress>>6);
+        else
+            printf("(T%2d) = ",(frameTable[frame].entryAddress>>6) - 144);
+        
         switch(frameTable[frame].status){
             case UPT_FRAME: printf("UPT Frame ");break;
             case DATA_FRAME: printf("DataFrame ");break;
             default: break;
         }
+        if (frameTable[frame].entryAddress >= 0xffff){
+            printf("ERROR\n");
+            longjmp(reset_context, POWER_DOWN_ERROR);
+            
+        }
         entry = MEMWORD(frameTable[frame].entryAddress);
+        
         printf(REFERENCED(entry)?"R":"-");
         printf(PINNED(entry)?"P":"-");
         printf(DIRTY(entry)?"D":"-");
@@ -102,7 +122,7 @@ void outputFrameTable(){
 //outputs the RPT entries and
 void outputPageTables(){
     int rpt,upt;
-    printf("\nClock status:\n");
+    printf("\nClock status for tid: %d\n",curTask);
     for (rpt = 0; rpt < 64; rpt+=2)
     {
         if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
@@ -114,13 +134,19 @@ void outputPageTables(){
             
             for(upt = 0; upt < 64; upt+=2)
             {
+                int frame = FRAME(MEMWORD(rpt+TASK_RPT));
+                if (frame > totalFrames || frame < 192){
+                    printf("\nBAD FRAME %d", frame);
+                    longjmp(reset_context, POWER_DOWN_ERROR);
+                }
+                
                 if (DEFINED(MEMWORD(rpt+TASK_RPT)) &&
                     (DEFINED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt))
                      || PAGED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt+1))))
                 {
                     
                     printf((clockIndex == (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt)?">":" ");
-                    printf("(%0x to %0x)",RPT_addr + (upt<<6), RPT_addr + ((upt+1)<<6)-1);
+                    printf("(%0x to %0x)",RPT_addr + ((upt/2)<<6), RPT_addr + ((upt/2+1)<<6)-1);
                     
                     outPTE("  UPT=", (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt);
                 }
@@ -145,9 +171,8 @@ int pageDataFrameOut(int upta){
     
     
     if (DEFINED(upte1)){
-        upte1 = CLEAR_FRAME(CLEAR_DEFINED(upte1));
         //if we already have a entry in our swap space and it's dirty
-        if (DEFINED(upte2) && DIRTY(upte1)){
+        if (DEFINED(upte2)){ //&& DIRTY(upte1) ){
             pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
             if (MMUdebugMode||DEBUG_SWAP) printf("Paging old frame %d to page %d\n",frame,pageNumber);
             
@@ -155,15 +180,10 @@ int pageDataFrameOut(int upta){
         //otherwise we have a new page write
         else if (!DEFINED(upte2)){
             pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
-            upte2 = CLEAR_PAGE(upte2);
-            upte2 = SET_PAGE(upte2,pageNumber);
+            upte2 = SET_PAGED(pageNumber);
             if (MMUdebugMode||DEBUG_SWAP) printf("Paging new frame %d to page %d\n",frame,pageNumber);
         }
-        else{
-            //we have a non dirty page already in swap space
-            //printf("Nothing to do to swap out\n");
-        }
-        
+        lastPageOut = pageNumber;
     }
     else{
         printf("Write out to swap failed for %x\n",upta);
@@ -217,7 +237,7 @@ int checkPageTableEntry(int index,int mark){
 }
 
 void advanceClock(){
-    clockIndex = (clockIndex+1)%LC3_FRAMES;
+    clockIndex = (clockIndex+1)%totalFrames;
 }
 
 //this function gets the first available frame
@@ -252,6 +272,7 @@ int getFrame(int notme)
     //manage the clock
     entryAddress = frameTable[clockIndex].entryAddress;
     clockCycles = 0;
+    status = 0;
     if (clockIndex == notme || frameTable[clockIndex].status == FRAME_EMPTY || !checkPageTableEntry(entryAddress, 1)){
         //if we aren't already on a good address.
         while (status == 0 && clockCycles < (LC3_FRAMES * 2)){
@@ -270,10 +291,16 @@ int getFrame(int notme)
         return -1;
     }
     
-    
-    
     frame = clockIndex;
     entryAddress = frameTable[frame].entryAddress;
+    
+    if (frame < 192 || frame >= totalFrames){
+        printf("\nBad Clock Frame %d",frame);
+        outputFrameTable();
+        outputPageTables();
+        
+    }
+    
     
     //page out the data
     if (pageDataFrameOut(entryAddress) == -1){
@@ -282,7 +309,7 @@ int getFrame(int notme)
     }
     
     //if we're paging out a data frame
-    if (frameTable[frame].status == DATA_FRAME){
+    if (frameTable[frame].status == DATA_FRAME && 0){
         //get the number and address of frame we're pointed at
         freeFrame = entryAddress >> 6;
         frameAddress = freeFrame << 6;
@@ -297,7 +324,7 @@ int getFrame(int notme)
         }
     }
     
-    if (MMUdebugMode || DEBUG_SWAP) printf("\nSetting %d frame to empty",frame);
+    if (MMUdebugMode || DEBUG_SWAP || DEBUG_PAGE) printf("\nSetting %d frame to empty",frame);
     frameTable[frame].status = FRAME_EMPTY;
     
     if (frame == notme){
@@ -341,9 +368,12 @@ unsigned short int *getMemAdr(int va, int rwFlg)
 	int rpta, rpte1, rpte2;
 	int upta, upte1, upte2;
 	int dataFrame, uptFrame;
+    int didhit = 0;
     
     // turn off virtual addressing for system RAM
 	if (va < 0x3000) return &memory[va];
+    
+    if (DEBUG_MULTI && curTask == 2) MMUdebugMode = 1;
 
     memAccess++;
 	rpta = tcb[curTask].RPT + RPTI(va);		// root page table address
@@ -361,12 +391,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         
         uptFrame = getFrame(-1);
         if (MMUdebugMode) printf("\nGetting frame %d for User Page Table", uptFrame);
-        rpte1 = SET_DEFINED(uptFrame);
+        rpte1 = SET_DIRTY(SET_DEFINED(uptFrame));
         if (PAGED(rpte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            if (MMUdebugMode) printf("\nPaging table page %d in to frame:%d",SWAPPAGE(upte2),dataFrame);
+            if (MMUdebugMode || DEBUG_PAGE) printf("\nPaging table page %d in to frame:%d",SWAPPAGE(upte2),dataFrame);
             accessPage(SWAPPAGE(rpte2), uptFrame, PAGE_READ);
+            lastPageIn = uptFrame;
         }
         else	// define new upt frame and reference from rpt
         {
@@ -383,6 +414,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         outputFrameTable();
         outputPageTables();
         printf("\n\nBAD FRAME\n");
+        usleep(1000);
         longjmp(reset_context, POWER_DOWN_ERROR);
         //exit(0);
     }
@@ -404,20 +436,22 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     if (DEFINED(upte1)){	// upte defined
         memHits++;
         upte1 = SET_DIRTY(upte1);
+        didhit = 1;
     }
     else {	// upte undefined
-
+        didhit = 0;
         // 1. get a physical frame (may have to free up frame) (x3000 - limit) (192 - 1023)
 
         dataFrame = getFrame(uptFrame); //but not the root page table
-        if (MMUdebugMode) printf("\nGetting frame %d for data",dataFrame);
+        if (MMUdebugMode||DEBUG_PAGE) printf("\nGetting frame %d for data",dataFrame);
         upte1 = SET_DEFINED(dataFrame);
         // 2. if paged out (DEFINED) load swapped page into physical frame
         if (PAGED(upte2))	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
         {
             memPageFaults++;
-            if (MMUdebugMode) printf("\nPaging data page %d in to frame:%d",SWAPPAGE(upte2),dataFrame);
+            if (MMUdebugMode || DEBUG_PAGE) printf("\nPaging data page %d in to frame:%d",SWAPPAGE(upte2),dataFrame);
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
+            lastPageIn = uptFrame;
         }
         else	// define new upt frame and reference from rpt
         {
@@ -427,6 +461,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         }
         
         
+        
 
     }
     
@@ -434,11 +469,12 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     dataFrame = FRAME(upte1);
     if (dataFrame < 192 || dataFrame >= totalFrames){
         printf("\nBad Data Frame %d",dataFrame);
-        printf("Clock: %c Last Frame: %d ",(clockRan)?'Y':'N', lastFramePaged);
-        printf("\nGetting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%x, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
+        printf("Clock: %c Hit: %c Last Frame: %d LastPageOut: %d LastPageIn:%d",(clockRan)?'Y':'N', (didhit)?'Y':'N', lastFramePaged,lastPageOut, lastPageIn);
+        printf("\nGetting memory address for VA: %x, RP: %x, RPTI: %d, UPTI: %02x, rwFlag:%d, Frame:%d, PA:%x\n",va,tcb[curTask].RPT,RPTI(va),UPTI(va),rwFlg,FRAME(upte1),(FRAME(upte1)<<6) + FRAMEOFFSET(va));
         outputFrameTable();
-        //outputPageTables();
+        outputPageTables();
         printf("\n\nBAD FRAME\n");
+        
         longjmp(reset_context, POWER_DOWN_ERROR);
         //exit(0);
     }
@@ -458,6 +494,8 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     //we know we have a hit here so get the memAccess and hits
     memAccess++;
     memHits++;
+    
+    if (DEBUG_MULTI && curTask == 2) MMUdebugMode = 0;
     
     return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];	// return physical address}
 
