@@ -29,9 +29,9 @@
 #include "os345lc3.h"
 #include <unistd.h>
 
-#define DEBUG_SWAP 1
+#define DEBUG_SWAP 0
 #define DEBUG_MULTI 0
-#define DEBUG_PAGE 1
+#define DEBUG_PAGE 0
 
 // ***********************************************************************
 // mmu variables
@@ -86,7 +86,7 @@ void outputFrameTable(){
     int frame, entry;
     printf("\nFrame Table: Clock (%d/%d)",clockIndex,totalFrames);
     for (frame = 0; frame<LC3_FRAMES;frame++){
-        if (frameTable[frame].status == FRAME_EMPTY && (frame < 192 || frame > totalFrames)) continue;
+        if (frameTable[frame].status == FRAME_EMPTY && (frame < 192 || frame >= totalFrames)) continue;
         if (frameTable[frame].status == FRAME_EMPTY) {
             printf("\n %4d : Empty",frame);
             continue;

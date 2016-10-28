@@ -492,9 +492,8 @@ int addToBlockedQueue(Semaphore* s, TID tid, int prority){
     
     if (prority <= 0 || tid < 0) return 0;
     
-    if (s == NULL){
-        return 0;
-    }
+    if (s == NULL) return 0;
+   
     
     TaskQueue* queuePointer = s->tasksWaiting;
     TaskQueue* queuePointerPrev = queuePointer;

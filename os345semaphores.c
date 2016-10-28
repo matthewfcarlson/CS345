@@ -256,8 +256,7 @@ bool deleteSemaphore(Semaphore** semaphore)
 			// ?? free all semaphore memory
 			// ?? What should you do if there are tasks in this
 			//    semaphores blocked queue????
-			free(sem->name);
-			free(sem);
+			
             TaskQueue* tq = sem->tasksWaiting;
             TaskQueue* oldtq;
             while (tq){
@@ -266,7 +265,8 @@ bool deleteSemaphore(Semaphore** semaphore)
                 tq = tq->nextTask;
                 free(oldtq);
             }
-
+            free(sem->name);
+            free(sem);
 			return TRUE;
 		}
 		// move to next semaphore
