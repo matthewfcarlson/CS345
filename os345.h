@@ -63,7 +63,7 @@
 
 // Swap space (P4)
 enum {PAGE_INIT, PAGE_READ, PAGE_OLD_WRITE, PAGE_NEW_WRITE,
-	  PAGE_GET_SIZE, PAGE_GET_READS, PAGE_GET_WRITES, PAGE_GET_ADR, PAGE_FREE};
+	  PAGE_GET_SIZE, PAGE_GET_READS, PAGE_GET_WRITES, PAGE_GET_ADR, PAGE_FREE, PAGE_PRINT};
 
 // ***********************************************************************
 // system structs

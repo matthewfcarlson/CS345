@@ -122,17 +122,17 @@ int P4_project4(int argc, char* argv[])					// project 5
     // initialize lc3 memory
     P4_initMemory(argc, argv);
 
-    
+    //MMUdebugMode = 1;
 
 	// start lc3 tasks
 	loadLC3File("crawler.hex");
-    loadLC3File("memtest.hex");
+    //loadLC3File("memtest.hex");
 	
 
 	//loadLC3File("crawler.hex");
-    //loadLC3File("crawler.hex");
-    //loadLC3File("crawler.hex");
-    //loadLC3File("crawler.hex");
+    loadLC3File("crawler.hex");
+    loadLC3File("crawler.hex");
+    loadLC3File("crawler.hex");
     //loadLC3File("crawler.hex");
 	
     //loadLC3File("crawler.hex");
@@ -370,7 +370,7 @@ int P4_rootPageTable(int argc, char* argv[])
 // **************************************************************************
 // **************************************************************************
 // upt <p><#>    Display process user page table
-void outputPageTables();
+void outputPageTables(int tid);
 void outputFrameTable();
 int P4_userPageTable(int argc, char* argv[])
 {
@@ -383,7 +383,8 @@ int P4_userPageTable(int argc, char* argv[])
         return 0;
     }
     if (argc == 2){
-        outputPageTables();
+        int tid = INTEGER(argv[1]);
+        outputPageTables(tid);
         return 0;
     }
 
@@ -465,7 +466,7 @@ void outPTE(char* s, int pte)
 
 	// output pte line
 	printf("%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
-	if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%3d", FRAME(pte1));
+	if (DEFINED(pte1)) printf(" Frame=%3d", FRAME(pte1));
 	if (DEFINED(pte2)) printf(" Page=%4d", SWAPPAGE(pte2));
     printf("\n");
 
@@ -546,20 +547,7 @@ void lookVM(int va)
 // pm <#>  Display page frame
 void displayPage(int pn)
 {
-   short int *buffer;
-   int i, ma;
-   printf("\nPage %d", pn);
-   buffer = (unsigned short int*)accessPage(pn, pn, PAGE_GET_ADR);
-    printf("Accessing %x swap at %x",buffer, &buffer[ma+i]);
-   for (ma = 0; ma < 64;)
-	{
-      printf("\n0x%04x:", ma);
-		for (i=0; i<8; i++)
-		{
-		   printf(" %04x", MASKTO16BITS(buffer[ma + i]));
-      }
-		ma+=8;
-   }
+    accessPage(pn, pn, PAGE_PRINT);
    return;
 } // end displayPage
 
