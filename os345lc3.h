@@ -63,14 +63,12 @@
 #define SET_REF(e1)       ((e1)|BIT_13_MASK)
 #define SET_PINNED(e1)    ((e1)|BIT_12_MASK)
 #define SET_PAGED(e2)     ((e2)|BIT_15_MASK)
-#define SET_PAGE(e1,e2)      ((e1)|(BITS_11_0_MASK&e2))
-#define SET_FRAME(e1,e2)     ((e1)|(BITS_9_0_MASK&e2))
 
 #define CLEAR_DEFINED(e1) ((e1)&~BIT_15_MASK)
 #define CLEAR_DIRTY(e1)   ((e1)&~BIT_14_MASK)
 #define CLEAR_REF(e1)     ((e1)&~BIT_13_MASK)
 #define CLEAR_PINNED(e1)  ((e1)&~BIT_12_MASK)
-#define CLEAR_PAGE(e1)      ((e1)&~BITS_11_0_MASK)
+#define CLEAR_PAGE(e1)      ((e1)&~BITS_12_0_MASK)
 #define CLEAR_FRAME(e1)     ((e1)&~BITS_9_0_MASK)
 
 // ---------------------------------------------------------------------
