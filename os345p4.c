@@ -126,18 +126,16 @@ int P4_project4(int argc, char* argv[])					// project 5
 
 	// start lc3 tasks
 	loadLC3File("crawler.hex");
-    //loadLC3File("memtest.hex");
+    loadLC3File("memtest.hex");
 	
 
-	//loadLC3File("crawler.hex");
+	loadLC3File("crawler.hex");
+    loadLC3File("memtest.hex");
+    
     loadLC3File("crawler.hex");
-    loadLC3File("crawler.hex");
-    loadLC3File("crawler.hex");
-    //loadLC3File("crawler.hex");
-	
-    //loadLC3File("crawler.hex");
-    //loadLC3File("memtest.hex");
-
+    loadLC3File("memtest.hex");
+    
+    
 	return 0;
 }
 
