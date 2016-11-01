@@ -166,8 +166,6 @@ int P4_initMemory(int argc, char* argv[])
 {
     int highAdr = 0x8000;
     
-    tcb[curTask].RPT = 0x2400;
-    
     
     printf("\nValidate arguments...");	// ?? validate arguments
     if (!tcb[curTask].RPT)
@@ -190,6 +188,7 @@ int P4_initMemory(int argc, char* argv[])
     memPageFaults = 0;
     
     accessPage(0, 0, PAGE_INIT);
+    
     //nextPage = 0;
     //pageReads = 0;
     //pageWrites = 0;
