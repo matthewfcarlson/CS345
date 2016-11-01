@@ -30,7 +30,7 @@
 
 // ***********************************************************************
 // mmu variables
-#define MMU_DEBUG_CLOCK 1
+#define MMU_DEBUG_CLOCK 0
 // LC-3 memory
 unsigned short int memory[LC3_MAX_MEMORY];
 
@@ -48,6 +48,41 @@ extern jmp_buf reset_context;
 
 int rptClock = 0;
 int uptClock = 0;
+
+//release all frames in a RPT
+void MMU_releaseRPT(int tid){
+    
+    int pte;
+    int rpta = tcb[tid].RPT;
+    int upta;
+    int frame;
+    //release all entries from
+    printf("\nReleasing RPT of task %d",tid);
+    for (int i=0;i<64;i+=2){
+        //get the root page entry
+        pte = MEMWORD(rpta + i);
+        //if it's defined
+        if (DEFINED(pte)){
+            //zero out the rpt
+            MEMWORD(rpta+i) = 0;
+            //get the user page
+            upta = FRAME(pte)<<6;
+            frame = FRAME(pte);
+            //printf("\nReleasing UPT frame %d",frame);
+            setFrameTableBits(1, frame, frame+1);
+            //clear every frame from the user page table
+            for (int j=0;j<64;j+=2){
+                pte = MEMWORD(upta+j);
+                if (DEFINED(pte)){
+                    frame = FRAME(pte);
+                    //printf("\nReleasing Data frame %d",frame);
+                    setFrameTableBits(1, frame, frame+1);
+                }
+            }
+        }
+        
+    }
+}
 
 //outputs the RPT entries and their UPT entries
 void outputPageTables(int tid){
@@ -214,15 +249,19 @@ int runClock(int notme, int tid){
     }
     
     //if we still have a bogus address we failed so try again
-#if MMU_DEBUG_CLOCK == 1
     if (properIndex == -1){
+#if MMU_DEBUG_CLOCK == 1
+
         printf("No user page table entry is good");
+#endif
         return -1;
     }
     else{
+#if MMU_DEBUG_CLOCK == 1
         printf("\nFound %x",upta+properIndex);
-    }
 #endif
+    }
+
     return upta+properIndex;
     
 }
@@ -253,26 +292,14 @@ int getFrame(int notme)
         int tid = 0;
         while (entryAddress <= 0 && tid <= 32){
             tid++;
-            if (tid == curTask)
-                entryAddress = runClock(notme, tid);
-            else
-                entryAddress = runClock(-1, tid);
+            entryAddress = runClock(notme, tid);
+            
         }
         
     }
     
     if (entryAddress <= 0){
-        int tid = 0;
-        while (entryAddress <= 0 && tid <= 32){
-            tid++;
-            if (tid == curTask)
-                entryAddress = runClock(notme, tid);
-            else
-                entryAddress = runClock(-1, tid);
-        }
-    }
-    if (entryAddress <= 0){
-        printf("Error: unable to find a frame to replace this one clock:%d address:%x\n",clockCount,entryAddress);
+        printf("\nError %d: unable to find a frame to replace this one clock:%d address:%x \n",curTask, clockCount,entryAddress);
         outputPageTables(-1);
         longjmp(reset_context, POWER_DOWN_ERROR);
     }
@@ -282,7 +309,7 @@ int getFrame(int notme)
     pageNumber = SWAPPAGE(pte2);
     
     if (!DEFINED(pte)){
-        printf("\nError: bad address %x returned by clock with data %x\n",entryAddress,pte);
+        printf("\nError %d: bad address %x returned by clock with data %x clock: %d notme:%d\n", curTask, entryAddress,pte,clockCount,notme);
         outputPageTables(-1);
         
     }
@@ -371,7 +398,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     memory[rpta] = SET_REF(rpte1);			// set rpt frame access bit
     uptFrame = FRAME(rpte1);
     
-    if (uptFrame < 192 || uptFrame > 193){
+    if (uptFrame < 192 || uptFrame > 2000){
         printf("\nERROR: bad user page table frame %d",uptFrame);
         outputPageTables(-1);
         longjmp(reset_context, POWER_DOWN_ERROR);
