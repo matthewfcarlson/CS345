@@ -250,17 +250,9 @@ int runClock(int notme, int tid){
     
     //if we still have a bogus address we failed so try again
     if (properIndex == -1){
-#if MMU_DEBUG_CLOCK == 1
-
-        printf("No user page table entry is good");
-#endif
         return -1;
     }
-    else{
-#if MMU_DEBUG_CLOCK == 1
-        printf("\nFound %x",upta+properIndex);
-#endif
-    }
+    
 
     return upta+properIndex;
     
@@ -317,7 +309,7 @@ int getFrame(int notme)
     frame = FRAME(pte);
     
     //if we have a previous paged out entry
-    if (PAGED(pte2)){ //&& DIRTY(upte1) ){
+    if (PAGED(pte2) && DIRTY(pte) ){
         pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
         //if (MMUdebugMode||DEBUG_SWAP) printf("Paging old frame %d to page %d\n",frame,pageNumber);
         
@@ -341,6 +333,7 @@ int getFrame(int notme)
     outputPageTables(-1);
     printf("\n--------------");
 #endif
+    
     return frame;
 }
 // **************************************************************************
@@ -370,13 +363,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
     
     // turn off virtual addressing for system RAM
     if (va < 0x3000) return &memory[va];
-
+    memAccess++;
     rpta = tcb[curTask].RPT + RPTI(va);		// root page table address
     rpte1 = memory[rpta];					// FDRP__ffffffffff
     rpte2 = memory[rpta+1];					// S___pppppppppppp
     if (DEFINED(rpte1))	{ // rpte defined
         memHits++;
-        if (rwFlg != 0) rpte1 = SET_DIRTY(rpte1);
+        rpte1 = SET_DIRTY(rpte1);
     }
     else { // rpte undefined
         uptFrame = getFrame(-1);
@@ -384,6 +377,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(rpte2)){	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
             memPageFaults++;
             accessPage(SWAPPAGE(rpte2), uptFrame, PAGE_READ);
+            if (rwFlg != 0) rpte1 = SET_DIRTY(rpte1);
         }
         else	// define new upt frame and reference from rpt
         {
@@ -403,12 +397,13 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         outputPageTables(-1);
         longjmp(reset_context, POWER_DOWN_ERROR);
     }
-    
+    memAccess++;
     upta = (FRAME(rpte1)<<6) + UPTI(va);	// user page table address
     upte1 = memory[upta]; 					// FDRP__ffffffffff
     upte2 = memory[upta+1]; 				// S___pppppppppppp
     if (DEFINED(upte1))	{                   // upte defined
         memHits++;
+        upte1 = SET_DIRTY(upte1);
     }
     else{				// upte undefined
         dataFrame = getFrame(uptFrame);
@@ -416,6 +411,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
         if (PAGED(upte2)){	// UPT frame paged out - read from SWAPPAGE(rpte2) into frame
             memPageFaults++;
             accessPage(SWAPPAGE(upte2), dataFrame, PAGE_READ);
+            if (rwFlg != 0) upte1 = SET_DIRTY(upte1);
         }
         else	// define new upt frame and reference from rpt
         {
@@ -426,6 +422,7 @@ unsigned short int *getMemAdr(int va, int rwFlg)
             // undefine all upte's
         }
     }
+    memAccess++;
     memory[upta] = SET_REF(upte1); 			// set upt frame access bit
     return &memory[(FRAME(upte1)<<6) + FRAMEOFFSET(va)];
 
