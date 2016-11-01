@@ -63,18 +63,22 @@ int P4_project4(int argc, char* argv[])					// project 5
 {
     // initialize lc3 memory
     P4_initMemory(argc, argv);
-    
-    // start lc3 tasks
+
+    //MMUdebugMode = 1;
+
+	// start lc3 tasks
+	loadLC3File("crawler.hex");
     loadLC3File("memtest.hex");
-    loadLC3File("crawler.hex");
-    
+
+
+	loadLC3File("crawler.hex");
     loadLC3File("memtest.hex");
+
     loadLC3File("crawler.hex");
-    
     loadLC3File("memtest.hex");
-    loadLC3File("crawler.hex");
-    
-    return 0;
+
+
+	return 0;
 }
 
 
@@ -99,11 +103,11 @@ int P4_project4(int argc, char* argv[])					// project 5
 int P4_dumpLC3Mem(int argc, char* argv[])
 {
     int sa, ea;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     sa = INTEGER(argv[1]);
     ea = sa + 0x0040;
-    
+
     dumpMemory("LC-3 Memory", sa, ea);
     return 0;
 } // end P4_dumpLC3Mem
@@ -116,10 +120,10 @@ int P4_dumpLC3Mem(int argc, char* argv[])
 int P4_vmaccess(int argc, char* argv[])
 {
     unsigned short int adr, rpt, upt;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     adr = INTEGER(argv[1]);
-    
+
     printf(" = %04x", getMemAdr(adr, 1)-&MEMWORD(0));
     for (rpt = 0; rpt < 64; rpt+=2)
     {
@@ -149,10 +153,10 @@ int P4_vmaccess(int argc, char* argv[])
 int P4_dumpPageMemory(int argc, char* argv[])
 {
     int page;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     page = INTEGER(argv[1]);
-    
+
     displayPage(page);
     return 0;
 } // end P4_dumpPageMemory
@@ -165,8 +169,8 @@ int P4_dumpPageMemory(int argc, char* argv[])
 int P4_initMemory(int argc, char* argv[])
 {
     int highAdr = 0x8000;
-    
-    
+
+
     printf("\nValidate arguments...");	// ?? validate arguments
     if (!tcb[curTask].RPT)
     {
@@ -177,22 +181,22 @@ int P4_initMemory(int argc, char* argv[])
     if (highAdr < 0x3000) highAdr = (highAdr<<6) + 0x3000;
     if (highAdr > 0xf000) highAdr = 0xf000;
     printf("\nSetting upper memory limit to 0x%04x", highAdr);
-    
+
     // init LC3 memory
     initLC3Memory(LC3_MEM_FRAME, highAdr>>6);
     printf("\nPhysical Address Space = %d frames (%0.1fkb)",
            (highAdr>>6)-LC3_MEM_FRAME, ((highAdr>>6)-LC3_MEM_FRAME)/8.0);
-    
+
     memAccess = 0;							// vm statistics
     memHits = 0;
     memPageFaults = 0;
-    
+
     accessPage(0, 0, PAGE_INIT);
-    
+
     //nextPage = 0;
     //pageReads = 0;
     //pageWrites = 0;
-    
+
     return 0;
 } // end P4_initMemory
 
@@ -204,11 +208,11 @@ int P4_initMemory(int argc, char* argv[])
 int P4_dumpVirtualMem(int argc, char* argv[])	// dump virtual lc-3 memory
 {
     int sa, ea;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     sa = INTEGER(argv[1]);
     ea = sa + 0x0040;
-    
+
     dumpVMemory("LC-3 Virtual Memory", sa, ea);
     lookVM(sa);
     return 0;
@@ -225,7 +229,7 @@ int P4_virtualMemStats(int argc, char* argv[])
     int pageReads = accessPage(0, 0, PAGE_GET_READS);
     int pageWrites = accessPage(0, 0, PAGE_GET_WRITES);
     double missRate = (memAccess)?(((double)memPageFaults)/(double)memAccess)*100.0:0;
-    
+
     printf("\nMemory accesses = %d", memAccess);
     printf("\n           hits = %d", memHits);
     printf("\n         faults = %d", memPageFaults);
@@ -254,10 +258,10 @@ int P4_dumpFrameTable(int argc, char* argv[])
 int P4_dumpFrame(int argc, char* argv[])
 {
     int frame;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     frame = INTEGER(argv[1]);
-    
+
     displayFrame(frame%LC3_FRAMES);
     return 0;
 } // end P4_dumpFrame
@@ -270,10 +274,10 @@ int P4_dumpFrame(int argc, char* argv[])
 int P4_rootPageTable(int argc, char* argv[])
 {
     int rpt;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     rpt = INTEGER(argv[1]);
-    
+
     displayRPT(rpt);
     return 0;
 } // end P4_rootPageTable
@@ -286,11 +290,11 @@ int P4_rootPageTable(int argc, char* argv[])
 int P4_userPageTable(int argc, char* argv[])
 {
     int rpt, upt;
-    
+
     printf("\nValidate arguments...");	// ?? validate arguments
     rpt = INTEGER(argv[1]);
     upt = INTEGER(argv[2]);
-    
+
     displayUPT(rpt, upt>>11);
     return 0;
 } // P4_userPageTable
@@ -328,7 +332,7 @@ void displayUPT(int rptNum, int uptNum)
     unsigned short int rpte, upt, upte1, upte2, uptba;
     rptNum &= BITS_3_0_MASK;
     uptNum &= BITS_4_0_MASK;
-    
+
     // index to process <rptNum>'s rpt + <uptNum> index
     rpte = MEMWORD(((LC3_RPT + (rptNum<<6)) + uptNum*2));
     // calculate upt's base address
@@ -351,23 +355,23 @@ void outPTE(char* s, int pte)
 {
     int pte1, pte2;
     char flags[8];
-    
+
     // read pt
     pte1 = memory[pte];
     pte2 = memory[pte+1];
-    
+
     // look at appropriate flags
     strcpy(flags, "----");
     if (DEFINED(pte1)) flags[0] = 'F';
     if (DIRTY(pte1)) flags[1] = 'D';
     if (REFERENCED(pte1)) flags[2] = 'R';
     if (PINNED(pte1)) flags[3] = 'P';
-    
+
     // output pte line
     printf("\n%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
     if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%d", FRAME(pte1));
     if (DEFINED(pte2)) printf(" Page=%d", SWAPPAGE(pte2));
-    
+
     return;
 } // end outPTE
 
@@ -380,13 +384,13 @@ void displayPT(int pta, int badr, int inc)
 {
     int i;
     char buf[32];
-    
+
     for (i=0; i<32; i++)
     {
         sprintf(buf, "(x%04x-x%04x) ", badr+ i*inc, badr + ((i+1)*inc)-1);
         outPTE("", (pta + i*2));
     }
-    
+
     return;
 } // end displayPT
 
@@ -398,7 +402,7 @@ void displayPT(int pta, int badr, int inc)
 void lookVM(int va)
 {
     unsigned short int rpte1, rpte2, upte1, upte2, pa;
-    
+
     // get root page table entry
     rpte1 = MEMWORD(LC3_RPT + RPTI(va));
     rpte2 = MEMWORD(LC3_RPT + RPTI(va) + 1);
@@ -512,10 +516,10 @@ void loadLC3File(char* string)
 {
     char* myArgv[2];
     char buff[32];
-    
+
     strcpy(buff, string);
     if (strchr(buff, '.')) *(strchr(buff, '.')) = 0;
-    
+
     myArgv[0] = buff;
     myArgv[1] = string;
     createTask( myArgv[0],				// task name
