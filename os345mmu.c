@@ -58,10 +58,11 @@ void outputPageTables(int tid){
         if (MEMWORD(rpt+tcb[tid].RPT) || MEMWORD(rpt+tcb[tid].RPT+1))
         {
             int RPT_addr = (rpt/2)<< 11;
-            printf("(%0x to %0x)",RPT_addr, RPT_addr + (1<<11)-1);
-            printf((rptClock== rpt)?">":" ");
-            outPTE(" RPT=  ", rpt+tcb[tid].RPT);
             
+            
+            outPTE(" RPT=  ", rpt+tcb[tid].RPT);
+            printf((rptClock== rpt)?"<":" ");
+            printf("(%0x to %0x)",RPT_addr, RPT_addr + (1<<11)-1);
             
             for(upt = 0; upt < 64; upt+=2)
             {
@@ -71,10 +72,11 @@ void outputPageTables(int tid){
                      || PAGED(MEMWORD((FRAME(MEMWORD(rpt+tcb[tid].RPT))<<6)+upt+1))))
                 {
                     
-                    printf((uptClock== upt)?">":" ");
-                    printf("(%0x to %0x)",RPT_addr + ((upt/2)<<6), RPT_addr + ((upt/2+1)<<6)-1);
                     
                     outPTE("  UPT=", (FRAME(MEMWORD(rpt+tcb[tid].RPT))<<6)+upt);
+                    printf((rptClock == rpt && uptClock== upt)?"<":" ");
+                    printf("(%0x to %0x)",RPT_addr + ((upt/2)<<6), RPT_addr + ((upt/2+1)<<6)-1);
+                    
                 }
             }
         }
@@ -106,11 +108,14 @@ int checkPageTableEntry(int index,int mark){
         return 0;
     }
     else if (REFERENCED(rpte1)){ //if it's in use
+        //make it and
         if (mark) {
             MEMWORD(rpta) = CLEAR_REF(rpte1);
-            upta = FRAME(rpta)<<6;
-            for (int i=0;i<64;i+=2){
-                
+            if (rpta < 0x3000){ //check it if's a root page entry
+                upta = FRAME(rpta)<<6;
+                for (int i=0;i<64;i+=2){
+                    MEMWORD(upta+i) = CLEAR_REF(MEMWORD(upta+i));
+                }
             }
         }
         
@@ -121,25 +126,97 @@ int checkPageTableEntry(int index,int mark){
     
 }
 
-void advanceRootClock(
+//advance the root clock
+int advanceRootClock(){
+    rptClock ++;
+    if (rptClock >= 64) rptClock = 0;
+    return tcb[curTask].RPT + rptClock;
+}
+//runs the clock and returns the page table entry to the frame to swap
+#define MAX_CLOCK_COUNT 512
+int runClock(int notme){
+    
+    int rpta, upta, clockCount,entryAddress;
+    //check the root page table entry
+    rpta = tcb[curTask].RPT + rptClock;
+    clockCount = 0;
+    
+    //figure out the user page table to take a frame from
+    if (checkPageTableEntry(rpta, 1) == 0) { //check it and mark it
+        
+        rpta = advanceRootClock();
+        while (checkPageTableEntry(rpta, 1) == 0 && clockCount < MAX_CLOCK_COUNT){
+            rpta = advanceRootClock();
+            clockCount++;
+        }
+    }
+    //check if we overran
+    if (clockCount == MAX_CLOCK_COUNT){
+        printf("Error: unable to find a frame to replace this one\n");
+        longjmp(reset_context, POWER_DOWN_ERROR);
+        return -2;
+    }
+    
+    //figure out a frame from the user page table or if it's empty then unload that
+    
+    
+    entryAddress = -1;
+    
+    outputPageTables(curTask);
+    
+    return entryAddress;
+}
 
+#define MAX_CLOCK_RUNS 2
 int getFrame(int notme)
 {
-    int frame, rpta, upta;
+    int frame,clockCount, pageNumber,pte,pte2,entryAddress;
     frame = getAvailableFrame();
     if (frame >=0) return frame;
     
     // run clock
     printf("\nWe're toast!!!!!!!!!!!!");
-
-    //check the root page table entry
-    rpta = tcb[curTask].RPT + rptClock;
-    if (checkPageTableEntry(rpta, 1) == 0) { //check it and mark it
-        advanceClock();
+    outputPageTables(curTask);
+    
+    entryAddress = 0;
+    
+    while (entryAddress <= 0 && clockCount < MAX_CLOCK_RUNS){
+        entryAddress = runClock(notme);
+        clockCount++;
+    }
+    if (clockCount == MAX_CLOCK_RUNS || entryAddress <= 0){
+        printf("Error: unable to find a frame to replace this one\n");
+        longjmp(reset_context, POWER_DOWN_ERROR);
     }
     
-    longjmp(reset_context, POWER_DOWN_ERROR);
+    pte = MEMWORD(entryAddress);
+    pte2 = MEMWORD(entryAddress+1);
+    pageNumber = SWAPPAGE(pte2);
     
+    if (!DEFINED(pte)){
+        printf("Error: bad frame returned by clock\n");
+        longjmp(reset_context, POWER_DOWN_ERROR);
+    }
+    
+    //if we have a previous paged out entry
+    if (PAGED(pte2)){ //&& DIRTY(upte1) ){
+        pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
+        //if (MMUdebugMode||DEBUG_SWAP) printf("Paging old frame %d to page %d\n",frame,pageNumber);
+        
+    }
+    //otherwise we have a new page write
+    else if (!DEFINED(pte2)){
+        pageNumber = accessPage(0, frame, PAGE_NEW_WRITE);
+        pte2 = SET_PAGED(pageNumber);
+        //if (MMUdebugMode||DEBUG_SWAP) printf("Paging new frame %d to page %d\n",frame,pageNumber);
+    }
+    
+    MEMWORD(entryAddress) = 0;
+    MEMWORD(entryAddress+1) =  SET_PAGED(pageNumber);
+    
+    //swap frame out to memory
+    pageNumber = accessPage(pageNumber, frame, PAGE_OLD_WRITE);
+
     return frame;
 }
 // **************************************************************************
