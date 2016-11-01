@@ -59,66 +59,8 @@ void lookVM(int va);
 // project4 command
 //
 //
-#define TEST_ENTRIES 20
-/*
-vma 0x3000
-vma 0x3001
-vma 0x3040
-vma 0x3041
-vma 0xEFD2
-vma 0xD851
-vma 0xD833
-vma 0x3833
-vma 0x3000
-vma 0xF745
-vma 0xEFF0
-vma 0xD807
-vma 0x3040
-vma 0xFFC8
-vma 0x303C
-*/
-int test_address[TEST_ENTRIES] = {0x3000, 0x3001, 0x3040, 0x3041, 0xEFD2,0xD851,0xD833, 0x3833,0x3000, 0xF745, 0xEff0,0xD807, 0x3040};
-int values[TEST_ENTRIES] = {0x50, 0x90, 0x50, 0x40, 0x12};
 int P4_project4(int argc, char* argv[])					// project 5
 {
-    int address,value;
-    static int rand_address = 0x4000;
-    extern long swapCount;
-    extern int MMUdebugMode;
-    extern void outputPageTables();
-
-    
-    /*if (argc == 1){
-     
-        srand((unsigned int)swapCount);
-        
-        for (int i=0;i<TEST_ENTRIES;i++){
-            
-            address = test_address[i];
-            value = values[i];
-            if (address == 0) address = rand_address;
-            if (value == 0) value = rand() % 0xfff + 0xf000;
-            rand_address+= rand() % 3 + 1;
-            test_address[i] = address;
-            values[i] = value;
-            printf("\nSetting 0x%0x to %x",address,value);
-            *getMemAdr(address, 1) = value;
-            //outputPageTables();
-            
-        }
-        for (int i=0;i<TEST_ENTRIES;i++){
-            
-            address = test_address[i];
-            value = *getMemAdr(address, 1);
-            
-            printf("\nGetting 0x%0x and it's %x vs %x ",address,value,values[i]);
-            if (value != values[i]) printf(":ERROR");
-            
-            
-        }
-        printf("\nDone.\n");
-        return 0;
-    }*/
     // initialize lc3 memory
     P4_initMemory(argc, argv);
 
@@ -127,15 +69,15 @@ int P4_project4(int argc, char* argv[])					// project 5
 	// start lc3 tasks
 	loadLC3File("crawler.hex");
     loadLC3File("memtest.hex");
-	
+
 
 	loadLC3File("crawler.hex");
     loadLC3File("memtest.hex");
-    
+
     loadLC3File("crawler.hex");
     loadLC3File("memtest.hex");
-    
-    
+
+
 	return 0;
 }
 
@@ -160,14 +102,14 @@ int P4_project4(int argc, char* argv[])					// project 5
 // dm <sa>,<ea>
 int P4_dumpLC3Mem(int argc, char* argv[])
 {
-	int sa, ea;
+    int sa, ea;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	sa = INTEGER(argv[1]);
-	ea = sa + 0x0040;
+    printf("\nValidate arguments...");	// ?? validate arguments
+    sa = INTEGER(argv[1]);
+    ea = sa + 0x0040;
 
-	dumpMemory("LC-3 Memory", sa, ea);
-	return 0;
+    dumpMemory("LC-3 Memory", sa, ea);
+    return 0;
 } // end P4_dumpLC3Mem
 
 
@@ -177,45 +119,30 @@ int P4_dumpLC3Mem(int argc, char* argv[])
 // vma <a>
 int P4_vmaccess(int argc, char* argv[])
 {
-	unsigned short int adr, rpt, upt,value;
-    static short number = 0;
+    unsigned short int adr, rpt, upt;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	adr = INTEGER(argv[1]);
-    
-    if (number>=0x10) number = 0;
-    else number++;
+    printf("\nValidate arguments...");	// ?? validate arguments
+    adr = INTEGER(argv[1]);
 
-    if (argc == 3){
-        value = INTEGER(argv[2]);
+    printf(" = %04x", getMemAdr(adr, 1)-&MEMWORD(0));
+    for (rpt = 0; rpt < 64; rpt+=2)
+    {
+        if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
+        {
+            outPTE("  RPT  =", rpt+TASK_RPT);
+            for(upt = 0; upt < 64; upt+=2)
+            {
+                if (DEFINED(MEMWORD(rpt+TASK_RPT)) &&
+                    (DEFINED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt))
+                     || PAGED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt+1))))
+                {
+                    outPTE("    UPT=", (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt);
+                }
+            }
+        }
     }
-    else{
-        value = ((0xd0 + number)<<8) + 0xee;
-    }
-
-	printf(" = %04lx", getMemAdr(adr, 1)-&MEMWORD(0));
-    
-    *getMemAdr(adr, 1) = value;
-    printf(" Set to %x\n ",((0xd0 + number)<<8) + 0xee);
-
-	for (rpt = 0; rpt < 64; rpt+=2)
-	{
-		if (MEMWORD(rpt+TASK_RPT) || MEMWORD(rpt+TASK_RPT+1))
-		{
-			outPTE("  RPT  =", rpt+TASK_RPT);
-			for(upt = 0; upt < 64; upt+=2)
-			{
-				if (DEFINED(MEMWORD(rpt+TASK_RPT)) &&
-					(DEFINED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt))
-					|| PAGED(MEMWORD((FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt+1))))
-				{
-					outPTE("    UPT=", (FRAME(MEMWORD(rpt+TASK_RPT))<<6)+upt);
-				}
-			}
-		}
-	}
-	printf("\nPages = %d", accessPage(0, 0, PAGE_GET_SIZE));
-	return 0;
+    printf("\nPages = %d", accessPage(0, 0, PAGE_GET_SIZE));
+    return 0;
 } // end P4_vmaccess
 
 
@@ -225,20 +152,13 @@ int P4_vmaccess(int argc, char* argv[])
 // pm <#>  Display page frame
 int P4_dumpPageMemory(int argc, char* argv[])
 {
-	int page;
+    int page;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-    if (argc >= 2){
-        page = INTEGER(argv[1]);
+    printf("\nValidate arguments...");	// ?? validate arguments
+    page = INTEGER(argv[1]);
 
-        displayPage(page);
-    }
-    else{
-        for (page = 0;page <5;page++){
-            displayPage(page);
-        }
-    }
-	return 0;
+    displayPage(page);
+    return 0;
 } // end P4_dumpPageMemory
 
 
@@ -248,37 +168,36 @@ int P4_dumpPageMemory(int argc, char* argv[])
 // im <a>  Initialize LC-3 memory bound
 int P4_initMemory(int argc, char* argv[])
 {
-	int highAdr = 0x8000;
-
-	tcb[curTask].RPT = 0x2400;
+    int highAdr = 0x8000;
 
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	if (!tcb[curTask].RPT)
-	{
-		printf("\nTask RPT Invalid!");
-		return 1;
-	}
-	if (argc > 1) highAdr = INTEGER(argv[1]);
-	if (highAdr < 0x3000) highAdr = (highAdr<<6) + 0x3000;
-	if (highAdr > 0xf000) highAdr = 0xf000;
-	printf("\nSetting upper memory limit to 0x%04x", highAdr);
+    printf("\nValidate arguments...");	// ?? validate arguments
+    if (!tcb[curTask].RPT)
+    {
+        printf("\nTask RPT Invalid!");
+        return 1;
+    }
+    if (argc > 1) highAdr = INTEGER(argv[1]);
+    if (highAdr < 0x3000) highAdr = (highAdr<<6) + 0x3000;
+    if (highAdr > 0xf000) highAdr = 0xf000;
+    printf("\nSetting upper memory limit to 0x%04x", highAdr);
 
-	// init LC3 memory
-	initLC3Memory(LC3_MEM_FRAME, highAdr>>6);
-	printf("\nPhysical Address Space = %d frames (%0.1fkb)",
-         (highAdr>>6)-LC3_MEM_FRAME, ((highAdr>>6)-LC3_MEM_FRAME)/8.0);
+    // init LC3 memory
+    initLC3Memory(LC3_MEM_FRAME, highAdr>>6);
+    printf("\nPhysical Address Space = %d frames (%0.1fkb)",
+           (highAdr>>6)-LC3_MEM_FRAME, ((highAdr>>6)-LC3_MEM_FRAME)/8.0);
 
-	memAccess = 0;							// vm statistics
-	memHits = 0;
-	memPageFaults = 0;
+    memAccess = 0;							// vm statistics
+    memHits = 0;
+    memPageFaults = 0;
 
-	accessPage(0,(highAdr>>6)-LC3_MEM_FRAME, PAGE_INIT);
-	//nextPage = 0;
-	//pageReads = 0;
-	//pageWrites = 0;
+    accessPage(0, 0, PAGE_INIT);
 
-	return 0;
+    //nextPage = 0;
+    //pageReads = 0;
+    //pageWrites = 0;
+
+    return 0;
 } // end P4_initMemory
 
 
@@ -288,15 +207,15 @@ int P4_initMemory(int argc, char* argv[])
 // dvm <sa>,<ea>
 int P4_dumpVirtualMem(int argc, char* argv[])	// dump virtual lc-3 memory
 {
-	int sa, ea;
+    int sa, ea;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	sa = INTEGER(argv[1]);
-	ea = sa + 0x0040;
+    printf("\nValidate arguments...");	// ?? validate arguments
+    sa = INTEGER(argv[1]);
+    ea = sa + 0x0040;
 
-	dumpVMemory("LC-3 Virtual Memory", sa, ea);
-	lookVM(sa);
-	return 0;
+    dumpVMemory("LC-3 Virtual Memory", sa, ea);
+    lookVM(sa);
+    return 0;
 } // end P4_dumpVirtualMem
 
 
@@ -306,19 +225,19 @@ int P4_dumpVirtualMem(int argc, char* argv[])	// dump virtual lc-3 memory
 // vms
 int P4_virtualMemStats(int argc, char* argv[])
 {
-	int nextPage = accessPage(0, 0, PAGE_GET_SIZE);
-	int pageReads = accessPage(0, 0, PAGE_GET_READS);
-	int pageWrites = accessPage(0, 0, PAGE_GET_WRITES);
-	double missRate = (memAccess)?(((double)memPageFaults)/(double)memAccess)*100.0:0;
+    int nextPage = accessPage(0, 0, PAGE_GET_SIZE);
+    int pageReads = accessPage(0, 0, PAGE_GET_READS);
+    int pageWrites = accessPage(0, 0, PAGE_GET_WRITES);
+    double missRate = (memAccess)?(((double)memPageFaults)/(double)memAccess)*100.0:0;
 
-	printf("\nMemory accesses = %d", memAccess);
-	printf("\n           hits = %d", memHits);
-	printf("\n         faults = %d", memPageFaults);
-	printf("\n           rate = %f%%", missRate);
-	printf("\n     Page reads = %d", pageReads);
-	printf("\n    Page writes = %d", pageWrites);
-	printf("\nSwap page count = %d (%d kb)", nextPage, nextPage>>3);
-	return 0;
+    printf("\nMemory accesses = %d", memAccess);
+    printf("\n           hits = %d", memHits);
+    printf("\n         faults = %d", memPageFaults);
+    printf("\n           rate = %f%%", missRate);
+    printf("\n     Page reads = %d", pageReads);
+    printf("\n    Page writes = %d", pageWrites);
+    printf("\nSwap page count = %d (%d kb)", nextPage, nextPage>>3);
+    return 0;
 } // end P4_virtualMemStats
 
 
@@ -327,8 +246,8 @@ int P4_virtualMemStats(int argc, char* argv[])
 // dft
 int P4_dumpFrameTable(int argc, char* argv[])
 {
-	dumpMemory("Frame Bit Table", LC3_FBT, LC3_FBT+0x40);
-	return 0;
+    dumpMemory("Frame Bit Table", LC3_FBT, LC3_FBT+0x40);
+    return 0;
 } // end P4_dumpFrameTable
 
 
@@ -338,13 +257,13 @@ int P4_dumpFrameTable(int argc, char* argv[])
 // dfm <frame>
 int P4_dumpFrame(int argc, char* argv[])
 {
-	int frame;
+    int frame;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	frame = INTEGER(argv[1]);
+    printf("\nValidate arguments...");	// ?? validate arguments
+    frame = INTEGER(argv[1]);
 
-	displayFrame(frame%LC3_FRAMES);
-	return 0;
+    displayFrame(frame%LC3_FRAMES);
+    return 0;
 } // end P4_dumpFrame
 
 
@@ -354,13 +273,13 @@ int P4_dumpFrame(int argc, char* argv[])
 // rpt <#>       Display process root page table
 int P4_rootPageTable(int argc, char* argv[])
 {
-	int rpt;
+    int rpt;
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	rpt = INTEGER(argv[1]);
+    printf("\nValidate arguments...");	// ?? validate arguments
+    rpt = INTEGER(argv[1]);
 
-	displayRPT(rpt);
-	return 0;
+    displayRPT(rpt);
+    return 0;
 } // end P4_rootPageTable
 
 
@@ -368,30 +287,16 @@ int P4_rootPageTable(int argc, char* argv[])
 // **************************************************************************
 // **************************************************************************
 // upt <p><#>    Display process user page table
-void outputPageTables(int tid);
-void outputFrameTable();
 int P4_userPageTable(int argc, char* argv[])
 {
-	int rpt, upt;
-    
-    if (argc == 1){
-        outputFrameTable();
+    int rpt, upt;
 
-        
-        return 0;
-    }
-    if (argc == 2){
-        int tid = INTEGER(argv[1]);
-        outputPageTables(tid);
-        return 0;
-    }
+    printf("\nValidate arguments...");	// ?? validate arguments
+    rpt = INTEGER(argv[1]);
+    upt = INTEGER(argv[2]);
 
-	printf("\nValidate arguments...");	// ?? validate arguments
-	rpt = INTEGER(argv[1]);
-	upt = INTEGER(argv[2]);
-
-	displayUPT(rpt, upt>>11);
-	return 0;
+    displayUPT(rpt, upt>>11);
+    return 0;
 } // P4_userPageTable
 
 
@@ -400,10 +305,10 @@ int P4_userPageTable(int argc, char* argv[])
 // **************************************************************************
 void displayFrame(int f)
 {
-   char mesg[128];
-   sprintf(mesg, "Frame %d", f);
-   dumpMemory(mesg, f*LC3_FRAME_SIZE, (f+1)*LC3_FRAME_SIZE);
-   return;
+    char mesg[128];
+    sprintf(mesg, "Frame %d", f);
+    dumpMemory(mesg, f*LC3_FRAME_SIZE, (f+1)*LC3_FRAME_SIZE);
+    return;
 } // end displayFrame
 
 
@@ -413,8 +318,8 @@ void displayFrame(int f)
 // display contents of RPT rptNum
 void displayRPT(int rptNum)
 {
-   displayPT(LC3_RPT + (rptNum<<6), 0, 1<<11);
-   return;
+    displayPT(LC3_RPT + (rptNum<<6), 0, 1<<11);
+    return;
 } // end displayRPT
 
 
@@ -424,21 +329,21 @@ void displayRPT(int rptNum)
 // display contents of UPT
 void displayUPT(int rptNum, int uptNum)
 {
-   unsigned short int rpte, upt, upte1, upte2, uptba;
-   rptNum &= BITS_3_0_MASK;
-   uptNum &= BITS_4_0_MASK;
+    unsigned short int rpte, upt, upte1, upte2, uptba;
+    rptNum &= BITS_3_0_MASK;
+    uptNum &= BITS_4_0_MASK;
 
-   // index to process <rptNum>'s rpt + <uptNum> index
-   rpte = MEMWORD(((LC3_RPT + (rptNum<<6)) + uptNum*2));
-   // calculate upt's base address
-   uptba = uptNum<<11;
-   if (DEFINED(rpte)) upt = FRAME(rpte)<<6;
-   else
-   {  printf("\nUndefined!");
-      return;
-   }
-   displayPT(upt, uptba, 1<<6);
-   return;
+    // index to process <rptNum>'s rpt + <uptNum> index
+    rpte = MEMWORD(((LC3_RPT + (rptNum<<6)) + uptNum*2));
+    // calculate upt's base address
+    uptba = uptNum<<11;
+    if (DEFINED(rpte)) upt = FRAME(rpte)<<6;
+    else
+    {  printf("\nUndefined!");
+        return;
+    }
+    displayPT(upt, uptba, 1<<6);
+    return;
 } // end displayUPT
 
 
@@ -448,27 +353,26 @@ void displayUPT(int rptNum, int uptNum)
 // output page table entry
 void outPTE(char* s, int pte)
 {
-	int pte1, pte2;
-	char flags[8];
+    int pte1, pte2;
+    char flags[8];
 
-	// read pt
-	pte1 = memory[pte];
-	pte2 = memory[pte+1];
+    // read pt
+    pte1 = memory[pte];
+    pte2 = memory[pte+1];
 
-	// look at appropriate flags
-	strcpy(flags, "----");
-	if (DEFINED(pte1)) flags[0] = 'F';
-	if (DIRTY(pte1)) flags[1] = 'D';
-	if (REFERENCED(pte1)) flags[2] = 'R';
-	if (PINNED(pte1)) flags[3] = 'P';
+    // look at appropriate flags
+    strcpy(flags, "----");
+    if (DEFINED(pte1)) flags[0] = 'F';
+    if (DIRTY(pte1)) flags[1] = 'D';
+    if (REFERENCED(pte1)) flags[2] = 'R';
+    if (PINNED(pte1)) flags[3] = 'P';
 
-	// output pte line
-	printf("%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
-	if (DEFINED(pte1)) printf(" Frame=%3d", FRAME(pte1));
-	if (DEFINED(pte2)) printf(" Page=%4d", SWAPPAGE(pte2));
-    printf("\n");
+    // output pte line
+    printf("\n%s x%04x = %04x %04x  %s", s, pte, pte1, pte2, flags);
+    if (DEFINED(pte1) || DEFINED(pte2)) printf(" Frame=%d", FRAME(pte1));
+    if (DEFINED(pte2)) printf(" Page=%d", SWAPPAGE(pte2));
 
-	return;
+    return;
 } // end outPTE
 
 
@@ -478,16 +382,16 @@ void outPTE(char* s, int pte)
 // display page table entries
 void displayPT(int pta, int badr, int inc)
 {
-	int i;
-	char buf[32];
+    int i;
+    char buf[32];
 
-	for (i=0; i<32; i++)
-	{
-      sprintf(buf, "(x%04x-x%04x) ", badr+ i*inc, badr + ((i+1)*inc)-1);
-		outPTE("", (pta + i*2));
-	}
+    for (i=0; i<32; i++)
+    {
+        sprintf(buf, "(x%04x-x%04x) ", badr+ i*inc, badr + ((i+1)*inc)-1);
+        outPTE("", (pta + i*2));
+    }
 
-   return;
+    return;
 } // end displayPT
 
 
@@ -497,45 +401,45 @@ void displayPT(int pta, int badr, int inc)
 // look at virtual memory location va
 void lookVM(int va)
 {
-   unsigned short int rpte1, rpte2, upte1, upte2, pa;
+    unsigned short int rpte1, rpte2, upte1, upte2, pa;
 
-   // get root page table entry
-	rpte1 = MEMWORD(LC3_RPT + RPTI(va));
-   rpte2 = MEMWORD(LC3_RPT + RPTI(va) + 1);
-   if (DEFINED(rpte1))
-   {	upte1 = MEMWORD((FRAME(rpte1)<<6) + UPTI(va));
-		upte2 = MEMWORD((FRAME(rpte1)<<6) + UPTI(va) + 1);
-   }
-   else
-   {
-		// rpte undefined
-		printf("\n  RTB[Undefined]");
-		return;
-	}
-  	if (DEFINED(upte1))
-	{
-		pa = (FRAME(upte1)<<6) + FRAMEOFFSET(va);
-	}
-   else
-   {
-		// upte undefined
-     	printf("\n  UTB[Undefined]");
-		return;
-   }
-   printf("\n  RPT[0x%04x] = %04x %04x", LC3_RPT + RPTI(va), rpte1, rpte2);
-      if (rpte1&BIT_14_MASK) printf(" D");
-      if (rpte1&BIT_13_MASK) printf(" R");
-      if (rpte1&BIT_12_MASK) printf(" P");
-      printf(" Frame=%d", rpte1&0x03ff);
-      if (DEFINED(rpte2)) printf(" Page=%d", rpte2&0x0fff);
-   printf("\n  UPT[0x%04x] = %04x %04x", (FRAME(rpte1)<<6) + UPTI(va), upte1, upte2);
-      if (upte1&BIT_14_MASK) printf(" D");
-      if (upte1&BIT_13_MASK) printf(" R");
-      if (upte1&BIT_12_MASK) printf(" P");
-      printf(" Frame=%d", upte1&0x03ff);
-      if (DEFINED(upte2)) printf(" Page=%d", upte2&0x0fff);
-   printf("\n  MEM[0x%04x] = %04x", pa, MEMWORD(pa));
-	return;
+    // get root page table entry
+    rpte1 = MEMWORD(LC3_RPT + RPTI(va));
+    rpte2 = MEMWORD(LC3_RPT + RPTI(va) + 1);
+    if (DEFINED(rpte1))
+    {	upte1 = MEMWORD((FRAME(rpte1)<<6) + UPTI(va));
+        upte2 = MEMWORD((FRAME(rpte1)<<6) + UPTI(va) + 1);
+    }
+    else
+    {
+        // rpte undefined
+        printf("\n  RTB[Undefined]");
+        return;
+    }
+    if (DEFINED(upte1))
+    {
+        pa = (FRAME(upte1)<<6) + FRAMEOFFSET(va);
+    }
+    else
+    {
+        // upte undefined
+        printf("\n  UTB[Undefined]");
+        return;
+    }
+    printf("\n  RPT[0x%04x] = %04x %04x", LC3_RPT + RPTI(va), rpte1, rpte2);
+    if (rpte1&BIT_14_MASK) printf(" D");
+    if (rpte1&BIT_13_MASK) printf(" R");
+    if (rpte1&BIT_12_MASK) printf(" P");
+    printf(" Frame=%d", rpte1&0x03ff);
+    if (DEFINED(rpte2)) printf(" Page=%d", rpte2&0x0fff);
+    printf("\n  UPT[0x%04x] = %04x %04x", (FRAME(rpte1)<<6) + UPTI(va), upte1, upte2);
+    if (upte1&BIT_14_MASK) printf(" D");
+    if (upte1&BIT_13_MASK) printf(" R");
+    if (upte1&BIT_12_MASK) printf(" P");
+    printf(" Frame=%d", upte1&0x03ff);
+    if (DEFINED(upte2)) printf(" Page=%d", upte2&0x0fff);
+    printf("\n  MEM[0x%04x] = %04x", pa, MEMWORD(pa));
+    return;
 } // end lookVM
 
 
@@ -545,8 +449,20 @@ void lookVM(int va)
 // pm <#>  Display page frame
 void displayPage(int pn)
 {
-    accessPage(pn, pn, PAGE_PRINT);
-   return;
+    short int *buffer;
+    int i, ma;
+    printf("\nPage %d", pn);
+    buffer = (short int*)accessPage(pn, pn, 3);
+    for (ma = 0; ma < 64;)
+    {
+        printf("\n0x%04x:", ma);
+        for (i=0; i<8; i++)
+        {
+            printf(" %04x", MASKTO16BITS(buffer[ma + i]));
+        }
+        ma+=8;
+    }
+    return;
 } // end displayPage
 
 
@@ -556,18 +472,18 @@ void displayPage(int pn)
 // dm <sa> <ea> - dump lc3 memory
 void dumpMemory(char *s, int sa, int ea)
 {
-   int i, ma;
-   printf("\n%s", s);
-   for (ma = sa; ma < ea;)
-	{
-		printf("\n0x%04x:", ma);
-		for (i=0; i<8; i++)
-		{
-			printf(" %04x", MEMWORD((ma+i)));
-		}
-		ma+=8;
-	}
-   return;
+    int i, ma;
+    printf("\n%s", s);
+    for (ma = sa; ma < ea;)
+    {
+        printf("\n0x%04x:", ma);
+        for (i=0; i<8; i++)
+        {
+            printf(" %04x", MEMWORD((ma+i)));
+        }
+        ma+=8;
+    }
+    return;
 } // end dumpMemory
 
 
@@ -577,18 +493,18 @@ void dumpMemory(char *s, int sa, int ea)
 // dvm <sa> <ea> - dump lc3 virtual memory
 void dumpVMemory(char *s, int sa, int ea)
 {
-   int i, ma;
-   printf("\n%s", s);
-   for (ma = sa; ma < ea;)
-	{
-		printf("\n0x%04x:", ma);
-		for (i=0; i<8; i++)
-		{
-			printf(" %04x", getMemoryData(ma+i));
-		}
-		ma+=8;
-	}
-   return;
+    int i, ma;
+    printf("\n%s", s);
+    for (ma = sa; ma < ea;)
+    {
+        printf("\n0x%04x:", ma);
+        for (i=0; i<8; i++)
+        {
+            printf(" %04x", getMemoryData(ma+i));
+        }
+        ma+=8;
+    }
+    return;
 } // end dumpVMemory
 
 
@@ -598,20 +514,20 @@ void dumpVMemory(char *s, int sa, int ea)
 // crawler and memtest programs
 void loadLC3File(char* string)
 {
-	char* myArgv[2];
-	char buff[32];
+    char* myArgv[2];
+    char buff[32];
 
-	strcpy(buff, string);
-	if (strchr(buff, '.')) *(strchr(buff, '.')) = 0;
+    strcpy(buff, string);
+    if (strchr(buff, '.')) *(strchr(buff, '.')) = 0;
 
-	myArgv[0] = buff;
-	myArgv[1] = string;
-	createTask( myArgv[0],				// task name
-					lc3Task,					// task
-					MED_PRIORITY,			// task priority
-					2,							// task argc
-				  	myArgv);					// task argv
-	return;
+    myArgv[0] = buff;
+    myArgv[1] = string;
+    createTask( myArgv[0],				// task name
+               lc3Task,					// task
+               MED_PRIORITY,			// task priority
+               2,							// task argc
+               myArgv);					// task argv
+    return;
 } // end loadFile
 
 
@@ -620,8 +536,8 @@ void loadLC3File(char* string)
 // **************************************************************************
 int P4_crawler(int argc, char* argv[])
 {
-	loadLC3File("crawler.hex");
-	return 0;
+    loadLC3File("crawler.hex");
+    return 0;
 } // end P4_crawler
 
 
@@ -630,9 +546,8 @@ int P4_crawler(int argc, char* argv[])
 // **************************************************************************
 int P4_memtest(int argc, char* argv[])
 {
-	loadLC3File("memtest.hex");
-	return 0;
+    loadLC3File("memtest.hex");
+    return 0;
 } // end crawler and memtest programs
 
 // **************************************************************************
-

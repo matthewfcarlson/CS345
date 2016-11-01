@@ -137,11 +137,12 @@ int killTask(int taskId)
 	if (!superMode) SWAP;
 	return 0;
 } // end killTask
-
+extern void MMU_releaseRPT(int);
 static void exitTask(int taskId)
 {
 	assert("exitTaskError" && tcb[taskId].name);
-
+    
+ 
 	// 1. find task in system queue
     Semaphore*s = tcb[taskId].event;
     if (s){
@@ -202,6 +203,9 @@ int sysKillTask(int taskId)
     block_task(taskId,0);
     tcb[taskId].state = S_EXIT;
     //printf("Remove from Ready Queue %d\n",result);
+    
+    //release the frames in the RPT
+    MMU_releaseRPT(taskId);
 
 	tcb[taskId].name = 0;			// release tcb slot
 	return 0;
