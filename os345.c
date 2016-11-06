@@ -184,7 +184,64 @@ int main(int argc, char* argv[])
 	return 0;
 } // end main
 
+int findNumberChildren(int tid){
+    int numberChildren = 0;
+    int currTid = 0;
+    if (tcb[tid].name == 0) return 0;
+    
+    for (currTid = 0; currTid < MAX_TASKS; currTid++){
+        if (tcb[currTid].name != 0 && tcb[currTid].parent == tid && currTid != tid) {
+            numberChildren+= 1;
+            //printf("%d tid %s\n",currTid,tcb[currTid].name);
+            numberChildren += findNumberChildren(currTid);
+        }
+    }
+    return numberChildren;
+}
 
+void distributeTicksToGroup(int tid, int ticks){
+    int currTid;
+    int numberChildren = 0;
+    int ticksPerChild;
+    int ticksForParent;
+    
+    for (currTid = 0; currTid < MAX_TASKS; currTid++){
+        if (tcb[currTid].name != 0 && tcb[currTid].parent == tid && currTid != tid) {
+            numberChildren ++;
+        }
+    }
+    
+    ticksPerChild = ticks/(numberChildren+1);
+    ticksForParent = ticksPerChild + ticks%(numberChildren+1);
+    
+    //printf("\nChildren of tid: %d get %d and the parent gets %d",tid,ticksPerChild, ticksForParent);
+    
+    tcb[tid].time += ticksForParent;
+    //printf("\n%d ticks for %d:%s",ticksForParent, tid, tcb[tid].name);
+    if (tcb[tid].state == S_READY || tcb[tid].state == S_RUNNING){
+        if (removeFromReadyQueue(tid).priority == 0) {
+            printf("Error removing %d from queue",tid);
+            listQueues();
+        };
+        addToReadyQueue(tid, tcb[tid].priority);
+    }
+    
+    if (numberChildren == 0) return;
+    
+    for (currTid = 0; currTid < MAX_TASKS; currTid++){
+        if (tcb[currTid].name != 0 && tcb[currTid].parent == tid && currTid != tid) {
+            distributeTicksToGroup(currTid,ticksPerChild);
+        }
+    }
+    
+}
+
+
+void distributeTicks(){
+    int numTasks = findNumberChildren(0);
+    //printf("\n-----Ticks to distribute: %d",numTasks * 10);
+    distributeTicksToGroup(0,numTasks * 5);
+}
 
 // **********************************************************************
 // **********************************************************************
@@ -211,12 +268,25 @@ static int scheduler()
     TaskID topTask = checkReadyQueue();
     if (topTask.tid == curTask && tcb[curTask].state == S_READY){
         
-        //listQueues();
+        //put the current task back in the queue so we round robin tasks at similar levels
         TaskID readyTask = takeFromReadyQueue();
-        //printf("Check to make sure we don't need to switch for TID:%d\n",readyTask.tid);
+        
         addToReadyQueue(readyTask.tid, readyTask.priority);
         topTask = checkReadyQueue();
-        //listQueues();
+    }
+    
+    
+    
+    if (scheduler_mode == 1 && tcb[topTask.tid].time <= 0 ){
+        distributeTicks();
+        topTask = checkReadyQueue();
+    }
+    if (scheduler_mode == 1 && tcb[topTask.tid].time <= 0 ){
+        topTask.priority = 0;
+    }
+    
+    if (scheduler_mode == 1){
+        tcb[topTask.tid].time --;
     }
     
     
@@ -226,7 +296,9 @@ static int scheduler()
     //if (topTask.tid != curTask) printf("Starting task tid: %d\n",topTask.tid);
     //else printf("Sticking with the same thing");
     
+    
     curTask = topTask.tid;
+    
 
 	return curTask;
 } // end scheduler
@@ -410,22 +482,35 @@ int addToReadyQueue(TID tid, int prority){
             tcb[tid].state = S_READY;
         return 1;
     }
-    
-    while(queuePointer != 0 && queuePointer->id.priority >= prority){
-        //if the task is already in the ready queue
-        if (queuePointer->id.tid == tid){
-            free(newtq);
-            printf("Already ready\n");
-            return 0;
+    if (scheduler_mode == 0){
+        while(queuePointer != 0 && queuePointer->id.priority >= prority ){
+            //if the task is already in the ready queue
+            if (queuePointer->id.tid == tid){
+                free(newtq);
+                printf("%d Already ready\n",tid);
+                return 0;
+            }
+            queuePointerPrev = queuePointer;
+            queuePointer = queuePointer -> nextTask;
         }
-        queuePointerPrev = queuePointer;
-        queuePointer = queuePointer -> nextTask;
+    }
+    else{
+        while(queuePointer != 0 && queuePointer->id.priority >= prority && tcb[queuePointer->id.tid].time != 0){
+            //if the task is already in the ready queue
+            if (queuePointer->id.tid == tid){
+                free(newtq);
+                printf("%d Already ready\n",tid);
+                return 0;
+            }
+            queuePointerPrev = queuePointer;
+            queuePointer = queuePointer -> nextTask;
+        }
     }
     //listQueues();
     //printf("Now adding\n");
     //Add the task
    
-    if (queuePointer == ReadyQueue){
+    if (queuePointer == ReadyQueue || ReadyQueue == 0){
         
         ReadyQueue = newtq;
     }
@@ -461,6 +546,42 @@ TaskID takeFromReadyQueue(){
         ReadyQueue = newTask->nextTask;
         
         free(newTask);
+    }
+    
+    return capturedTask;
+}
+
+
+// **********************************************************************
+// **********************************************************************
+// Removes the task in the readyQueue
+
+// 1. Moves the task from the ready list to the blocked list
+// 2. Return 0 if it is already blocked
+
+TaskID removeFromReadyQueue(TID tid){
+    TaskID capturedTask;
+    capturedTask.tid = 0;
+    capturedTask.priority = 0;
+    
+    TaskQueue* newTask = ReadyQueue;
+    TaskQueue* prevTask = newTask;
+    
+    if (newTask->id.tid == tid && newTask->id.priority != 0){
+        ReadyQueue = newTask->nextTask;
+        capturedTask = newTask->id;
+        free(newTask);
+        return capturedTask;
+    }
+    
+    while (newTask != 0 && newTask->id.tid != tid){
+        prevTask = newTask;
+        newTask = newTask->nextTask;
+    }
+    if (newTask != 0){
+        capturedTask = newTask->id;
+        if (prevTask != newTask)
+            prevTask->nextTask = newTask->nextTask;
     }
     
     return capturedTask;
@@ -561,6 +682,13 @@ TaskID removeFromBlockedQueue(Semaphore* s,TID tid, int prority){
     
     TaskQueue* newTask = s->tasksWaiting;
     TaskQueue* prevTask = newTask;
+    
+    if (newTask->id.tid == tid && newTask->id.priority != 0){
+        s->tasksWaiting = newTask->nextTask;
+        capturedTask = newTask->id;
+        free(newTask);
+        return capturedTask;
+    }
     
     while (newTask != 0 && newTask->id.tid != tid){
         prevTask = newTask;

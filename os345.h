@@ -104,6 +104,7 @@ typedef struct							// task control block
 	int argc;							// task argument count (project 1)
 	char** argv;						// task argument pointers (project 1)
 	int signal;							// task signals (project 1)
+    int time;
 	void (*sigContHandler)(void);	// task mySIGCONT handler
 	void (*sigIntHandler)(void);	// task mySIGINT handler
 	void (*sigKillHandler)(void);	// task mySIGKILL handler
@@ -156,6 +157,7 @@ int semTryLock(Semaphore*);
 int block_task(int tid, Semaphore* s);
 int unblock_task(Semaphore* s);
 int addToReadyQueue(TID tid, int prority);
+TaskID removeFromReadyQueue(TID tid);
 void listQueues();
 TaskID takeFromReadyQueue();
 int addToBlockedQueue(Semaphore* s, TID tid, int prority);

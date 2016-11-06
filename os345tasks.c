@@ -81,6 +81,8 @@ int createTask(char* name,						// task name
                 strcpy(tcb[tid].argv[i], argv[i]);
             }
 			tcb[tid].argv = argv;			// argument pointers
+            
+            tcb[tid].time = 0;              // have zero ticks to start
 
 			tcb[tid].event = 0;				// suspend semaphore
             tcb[tid].RPT = LC3_RPT + ((tid) ? ((tid-1)<<6) : 0);		// root page table (project 5)
@@ -202,6 +204,19 @@ int sysKillTask(int taskId)
     tcb[taskId].state = S_READY;
     block_task(taskId,0);
     tcb[taskId].state = S_EXIT;
+    
+    int newParentTid = -1;
+    for (int currTid = 0; currTid < MAX_TASKS; currTid++){
+        if (currTid != taskId && tcb[currTid].name != 0 && tcb[currTid].parent == taskId){
+            if (newParentTid == -1) {
+                newParentTid = currTid;
+                tcb[currTid].parent = tcb[taskId].parent;
+            }
+            else{
+                tcb[currTid].parent = newParentTid;
+            }
+        }
+    }
     //printf("Remove from Ready Queue %d\n",result);
     
     //release the frames in the RPT

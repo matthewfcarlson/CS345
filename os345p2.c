@@ -99,8 +99,8 @@ int P2_project2(int argc, char* argv[])
 void print_task(int i){
     if (tcb[i].name)
     {
-        printf("\n%4d/%-4d%20s%4d  ", i, tcb[i].parent,
-               tcb[i].name, tcb[i].priority);
+        printf("\n%4d/%-4d%20s%4d  %d  ", i, tcb[i].parent,
+               tcb[i].name, tcb[i].priority, tcb[i].time);
         if (tcb[i].signal & mySIGSTOP) my_printf("Paused");
         else if (tcb[i].state == S_NEW) my_printf("New");
         else if (tcb[i].state == S_READY) my_printf("Ready");
