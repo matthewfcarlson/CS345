@@ -46,6 +46,7 @@ int num_siblings[NUM_PARENTS];		// number in each group
 // project5 command
 //
 //
+int started = 0;
 int P5_project5(int argc, char* argv[])		// project 5
 {
     int i;
@@ -54,6 +55,8 @@ int P5_project5(int argc, char* argv[])		// project 5
     char arg2[16];
     char arg3[16];
     
+
+    
     static char* groupReportArgv[] = {"groupReport", "4"};
     
     // check if just changing scheduler mode
@@ -61,10 +64,12 @@ int P5_project5(int argc, char* argv[])		// project 5
     {
         scheduler_mode = atoi(argv[1]);
         printf("\nScheduler Mode = %d (%s)", scheduler_mode, scheduler_mode ? "FSS" : "RR");
+        if (started == 1) return 0;
         
     }
     
     printf("\nStarting Project 5");
+    started =  1;
     
     for (i = 0; i < NUM_PARENTS; ++i)
     {

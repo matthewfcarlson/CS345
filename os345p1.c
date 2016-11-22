@@ -501,7 +501,7 @@ Command** P1_init()
 	commands[i++] = newCommand("mkdir", "mk", P6_mkdir, "Create directory");
 	commands[i++] = newCommand("run", "run", P6_run, "Execute LC-3 program");
 	commands[i++] = newCommand("space", "sp", P6_space, "Space on disk");
-	commands[i++] = newCommand("type", "ty", P6_type, "Type file");
+	commands[i++] = newCommand("type", "cat", P6_type, "Type file");
 	commands[i++] = newCommand("unmount", "um", P6_unmount, "Unmount disk");
 
 	commands[i++] = newCommand("fat", "ft", P6_dfat, "Display fat table");

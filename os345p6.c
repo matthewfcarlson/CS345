@@ -74,13 +74,12 @@ FMSERROR FMSErrors[NUM_ERRORS]   = {
 int sectorReads;
 int sectorWrites;
 
+
 // ***********************************************************************
 // project 6 functions and tasks
 
-
 // ***********************************************************************
 // ***********************************************************************
-
 
 // ***********************************************************************
 // ***********************************************************************
@@ -88,7 +87,7 @@ int sectorWrites;
 //
 int P6_project6(int argc, char* argv[])
 {
-	char* newArgv[] = { {"finalTest"}, {"All"} };
+	char* newArgv[] = { "finalTest", "All" };
 
 	if (sizeof(DirEntry) != 32)
 	{
@@ -300,7 +299,7 @@ int P6_mount(int argc, char* argv[])		// mount RAM disk
 	printf("\n           FAT sectors: %d", bootSector.BPB_FATSz16);		// FAT sectors (should be 9)
 	printf("\n         Sectors/track: %d", bootSector.BPB_SecPerTrk);		// Sectors per cylindrical track
 	printf("\n          Heads/volume: %d", bootSector.BPB_NumHeads);		// Heads per volume (2 for 1.4Mb 3.5" floppy)
-	printf("\n        FAT-32 sectors: %ld", bootSector.BPB_HiddSec);		// Hidden sectors (0 for non-partitioned media)
+	printf("\n        FAT-32 sectors: %u", bootSector.BPB_HiddSec);		// Hidden sectors (0 for non-partitioned media)
 	return 0;
 } // end P6_mount
 
@@ -390,7 +389,7 @@ int P6_type(int argc, char* argv[])		// display file
 		SWAP;
 	}
 	if (nBytes != ERR66) fmsError(nBytes);
-	if (error = fmsCloseFile(FDs)) fmsError(error);
+	if ((error = fmsCloseFile(FDs))) fmsError(error);
 	return 0;
 } // end P6_type
 
@@ -401,7 +400,7 @@ int P6_type(int argc, char* argv[])		// display file
 //	copy <file1>,<file2>
 int P6_copy(int argc, char* argv[])		 	// copy file
 {
-	int error, nBytes, FDs, FDd;
+	int error = 0, nBytes, FDs, FDd;
 	char buffer[BYTES_PER_SECTOR];
 
 	if (!diskMounted)
@@ -1705,7 +1704,7 @@ int fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
 		}
 
 		// read sector into directory buffer
-		if (error = fmsReadSector(buffer, dirSector)) return error;
+		if ((error = fmsReadSector(buffer, dirSector))) return error;
 
 		// find next matching directory entry
 		while(1)

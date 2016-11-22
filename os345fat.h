@@ -33,6 +33,7 @@ typedef unsigned int uint32;
 #define OPEN_RDWR		3					// read/write
 
 #define ENTRIES_PER_SECTOR 16
+#define SECTORS_PER_CLUSTER 1
 #define FAT_EOC   4095
 #define FAT_BAD   4087
 #define C_2_S(c) (c+BEG_DATA_SECTOR-2)
@@ -40,6 +41,7 @@ typedef unsigned int uint32;
 
 #define BigEndian(v) 1?v:((((v)>>8)&0x00ff))|((v)<<8)
 #define lLE(v) LITTLE?v:((BigEndian(v)<<16))|(BigEndian((v)>>16))
+
 
 typedef struct
 {

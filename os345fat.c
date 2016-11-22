@@ -61,6 +61,8 @@ extern void fmsError(int);
 extern int fmsReadSector(void* buffer, int sectorNumber);
 extern int fmsWriteSector(void* buffer, int sectorNumber);
 
+extern unsigned short getFatEntry(int FATindex, unsigned char* FATtable);
+
 // ***********************************************************************
 // ***********************************************************************
 // fms variables
@@ -74,6 +76,7 @@ unsigned char FAT2[NUM_FAT_SECTORS * BYTES_PER_SECTOR];
 
 char dirPath[128];							// current directory path
 FDEntry OFTable[NFILES];					// open file table
+unsigned int currOpenFiles = 0;
 
 extern bool diskMounted;					// disk has been mounted
 extern TCB tcb[];							// task control block
@@ -90,8 +93,14 @@ int fmsCloseFile(int fileDescriptor)
 {
 	// ?? add code here
 	printf("\nfmsCloseFile Not Implemented");
+    
+    if (OFTable[fileDescriptor].name[0] == 0) return ERR63;
+    
+    OFTable[fileDescriptor].name[0] = 0;
+    
+    OFTable[fileDescriptor].startCluster = 0;
 
-	return ERR63;
+	return 0;
 } // end fmsCloseFile
 
 
@@ -116,7 +125,7 @@ int fmsDefineFile(char* fileName, int attribute)
 {
 	// ?? add code here
 	printf("\nfmsDefineFile Not Implemented");
-
+    
 	return ERR72;
 } // end fmsDefineFile
 
@@ -162,10 +171,72 @@ int fmsDeleteFile(char* fileName)
 //
 int fmsOpenFile(char* fileName, int rwMode)
 {
-	// ?? add code here
-	printf("\nfmsOpenFile Not Implemented");
-
-	return ERR61;
+    DirEntry dirEntry;
+    char mask[20];
+    int index = 0;
+    int error = 0;
+    
+    if (!diskMounted)
+    {
+        fmsError(ERR72);
+        return 0;
+    }
+    //check if filename is valid
+    int valid_name = isValidFileName(fileName);
+    if (valid_name == 0) return ERR50;
+    
+    //check if we already have too many files open
+    if (currOpenFiles == NFILES) return ERR70;
+    
+    //Find directory entry
+    strcpy(mask, fileName);
+    error = fmsGetDirEntry(fileName, &dirEntry);
+    if (error){
+        return ERR61;
+    }
+    
+    printf("Index: %x",index);
+    
+    //Check permission
+    //if we're trying to write and it's read only
+    if (dirEntry.attributes & READ_ONLY && rwMode != 0){
+        return ERR83;
+    }
+    /*Invalid File Name”, “File Not Defined”, “File Already open”, “Too Many Files Open”, “File Space Full”*/
+    
+    //Create a channel (file slot, handle)
+    
+    //find the first open file slot
+    int open_slot = -1;
+    for (int fd = 0; fd <= NFILES; fd++)
+    {
+        if (OFTable[fd].name[0] == 0 && open_slot == -1){
+            open_slot = fd;
+        }
+        //check if the file is already open
+        //qif (OFTable[fd].name != 0 && )
+    }
+    if (open_slot == -1) return ERR70; //we didn't find a slot
+    
+    FDEntry* entry = &OFTable[open_slot];
+    //set the attributes
+    entry->startCluster = dirEntry.startCluster;
+    entry->currentCluster = 0;
+    entry->fileSize = (rwMode == 1)?0:dirEntry.fileSize;
+    
+    entry->pid = curTask;
+    //string copy
+    for (int i=0;i<8;i++) entry->name[i] = dirEntry.name[i];
+    for (int i=0;i<3;i++) entry->extension[i] = dirEntry.extension[i];
+    
+    //other attributes
+    entry->attributes = dirEntry.attributes;
+    entry->mode = rwMode;
+    entry->directoryCluster = CDIR;
+    entry->fileIndex = (rwMode!=2)?0:dirEntry.fileSize;
+    
+    
+    return open_slot;
 } // end fmsOpenFile
 
 
@@ -182,10 +253,76 @@ int fmsOpenFile(char* fileName, int rwMode)
 //
 int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
 {
-	// ?? add code here
-	printf("\nfmsReadFile Not Implemented");
-
-	return ERR63;
+    int bytesOutput = 0;
+    int bufferIndex;
+    int error;
+    int nextCluster;
+    int bytesLeft;
+    /*Errors
+     “File Not Open”
+     “Invalid File Descriptor”
+     “End-of-File”
+     “Illegal Access”
+     Always reads from transaction buffer
+     Watch out for sector boundaries
+     Byte oriented (translates to cluster blocking)
+     */
+    FDEntry* fd = &OFTable[fileDescriptor];
+    if (fd->name[0] == 0) return ERR52;
+    
+    //check that we aren't write or append
+    if (fd->mode == 1 || fd->mode == 2) return ERR85;
+    
+    //load the nBytes
+    while (nBytes > 0){
+        //setup the next cluster
+        nextCluster = fd->currentCluster;
+        
+        if (fd->fileSize == fd->fileIndex) //check if we reached the end of the file
+            return bytesOutput ? bytesOutput : ERR66; //if so return an EOF or the number of bytes we've output
+        bufferIndex = fd->fileIndex % BYTES_PER_SECTOR; //figure out where we are in the sector
+        if (bufferIndex == 0 && (fd->fileIndex ||!fd->currentCluster)){ //if we're at a sector boundary
+            if (fd->currentCluster == 0){ //load the first cluster
+                if (fd->startCluster == 0) return ERR66;
+                nextCluster = fd->startCluster;
+                fd->fileIndex = 0;
+            }
+            if (fd->fileIndex != 0){ //otherwise we're loading the next cluster
+                nextCluster = getFatEntry(fd->currentCluster, FAT1);
+                if (nextCluster == FAT_EOC) return bytesOutput;
+            }
+            if (fd->flags & BUFFER_ALTERED){ //if we've altered the buffer
+                //write it back out
+                if ((error = fmsWriteSector(fd->buffer, C_2_S(fd->currentCluster)))){
+                    return error;
+                }
+                fd->flags &= ~BUFFER_ALTERED; //clear the altered flag
+            }
+            if ((error = fmsReadSector(fd->buffer, C_2_S(nextCluster)))){
+                return error;
+            }
+            //set our current cluster to the one we just read from
+            fd->currentCluster = nextCluster;
+            
+        }
+        
+        bytesLeft = BYTES_PER_SECTOR - bufferIndex;
+        if (bytesLeft > nBytes) bytesLeft = nBytes;
+        if (bytesLeft > (fd->fileSize - fd->fileIndex))
+            bytesLeft = fd->fileIndex - fd->fileIndex;
+        
+        //do the memory copy
+        memcpy(buffer, &fd->buffer[bufferIndex], bytesLeft);
+        
+        fd->fileIndex += bytesLeft;
+        buffer += bytesLeft;
+        nBytes -= bytesLeft;
+        bytesOutput += bytesLeft;
+        
+    }
+    
+    
+	return bytesOutput;
 } // end fmsReadFile
 
 
@@ -221,6 +358,8 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
 {
 	// ?? add code here
 	printf("\nfmsWriteFile Not Implemented");
+    
+    
 
 	return ERR63;
 } // end fmsWriteFile
