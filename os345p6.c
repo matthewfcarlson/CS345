@@ -274,7 +274,7 @@ int P6_mount(int argc, char* argv[])		// mount RAM disk
 
 	assert("64-bit" && (sizeof(DirEntry) == 32));
 
-	if (argc < 2) strcat(temp, "c:/lcc/projects/disk4");
+	if (argc < 2) strcat(temp, "disk4");
 		else strcat(temp, argv[1]);
 	printf("\nMount Disk \"%s\"", temp);
 
@@ -1594,7 +1594,7 @@ int isValidFileName(char* fileName)
 	// check for invalid characters
 	if (strpbrk(fileName, "\"/:*<>|?")) return 0;
 	// check for double period
-	if (s = strchr(fileName, '.'))
+	if ((s = strchr(fileName, '.')))
 	{
 		if (strchr(s+1, '.')) return 0;			// more than 1 '.'
 		if (strlen(s+1) > 3) return 0;			// too long of extension
@@ -1620,13 +1620,14 @@ int fmsMask(char* mask, char* name, char* ext)
    // look thru name
    for (i=0,j=0; j<8; i++,j++)
    {
-      if (mask[i] == '*') {i++; break;}
+      if (mask[i] == '*') {break;}
       if ((mask[i] == '.') && (name[j] == ' ')) {i++; break;}
       if ((mask[i] == '?') && (name[j] != ' ')) continue;
       if (!mask[i] && (name[j] == ' ') && (ext[0] == ' ')) return 1;
       if ((mask[i] != toupper(name[j])) && (mask[i] != tolower(name[j]))) return 0;
    }
-   while (mask[i] == '.') i++;
+    if (mask[i] != '*')
+        while (mask[i] == '.') i++;
    // check extension
    for (j=0; j<3; i++,j++)
    {
@@ -1711,11 +1712,13 @@ int fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
 		{	// read directory entry
 			dirIndex = *dirNum % ENTRIES_PER_SECTOR;
 			memcpy(dirEntry, &buffer[dirIndex * sizeof(DirEntry)], sizeof(DirEntry));
+            //printf("\nChecking %s at sector %d, dirNum %d",dirEntry->name,dirSector,*dirNum);
 			if (dirEntry->name[0] == 0) return ERR67;	// EOD
 			(*dirNum)++;                        		// prepare for next read
 			if (dirEntry->name[0] == 0xe5);     		// Deleted entry, go on...
 			else if (dirEntry->attributes == LONGNAME);
 			else if (fmsMask(mask, dirEntry->name, dirEntry->extension)) return 0;   // return if valid
+            
 			// break if sector boundary
 			if ((*dirNum % ENTRIES_PER_SECTOR) == 0) break;
 		}
@@ -1740,6 +1743,16 @@ int fmsChangeDir(char* dirName)
    int i, error;
 	DirEntry dirEntry;
 
+    if (dirName[0] == '\\'){
+        CDIR = 0;
+        for (i=0;i<128;i++){
+            if (dirPath[i] == ':'){
+                dirPath[i+3] = 0;
+                break;
+            }
+        }
+        return 0;
+    }
 	// need to allow for . and ..
 	//if (isValidFileName(dirName) < 1) return ERR50;
    if ((error = fmsGetDirEntry(dirName, &dirEntry))) return error;
@@ -1755,6 +1768,7 @@ int fmsChangeDir(char* dirName)
 		dirPath[i] = '\0';
 		return 0;
 	}
+    
 	// add new path
 	if (dirPath[strlen(dirPath)-1] != '\\') strcat(dirPath, "\\");
 	strcat(dirPath, dirName);

@@ -201,7 +201,7 @@ static void insert_char(char in){
 }
 
 extern bool diskMounted;					// disk has been mounted
-extern void fmsAutcompleteFile(char* filename);
+extern int fmsAutcompleteFile(char* filename);
 // **********************************************************************
 // keyboard interrupt service routine
 //
@@ -235,21 +235,33 @@ static void keyboard_isr()
                         //TODO: create autocomplete function
                         char filename_buffer[30];
                         int first_space = 0;
+                        int autolength;
                         for (i=inBufIndx;i>=0 && first_space == 0;i--){
                             if (inBuffer[i] == ' ' && inBufIndx != i) first_space = i;
                         }
                         
                         int j = 0;
-                        printf("AUTCOMPLETE :[");
+                        autolength = inBufIndx - first_space -1 ;
+                        if (autolength == 0) break;
                         
-                        for (i=first_space+1; i <= inBufIndx; i++){
+                        
+                        for (i=first_space+1; i < inBufIndx; i++){
                             filename_buffer[j] = inBuffer[i];
                             j++;
                         }
+                        filename_buffer[j] = '*';
+                        j++;
                         filename_buffer[j] = 0;
-                        fmsAutcompleteFile(filename_buffer);
+                        if (!fmsAutcompleteFile(filename_buffer)) break;
+                        //erase the current input
+                        for (i=0;i<autolength;i++) printf("\b");
                         printf("%s",filename_buffer);
-                        printf("]");
+                        j = 0;
+                        for (i=first_space+1; i < 50; i++){
+                            inBuffer[i] = filename_buffer[j];
+                            if (inBuffer[i] == 0) break;
+                            j++;
+                        }
                     }
                     break;
                 }

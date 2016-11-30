@@ -82,6 +82,38 @@ extern bool diskMounted;					// disk has been mounted
 extern TCB tcb[];							// task control block
 extern int curTask;							// current task #
 
+// ***********************************************************************
+// ***********************************************************************
+// This function autcompletes the filename given with the first directory entry in the current directory
+int fmsAutcompleteFile(char* filename){
+    DirEntry dirEntry;
+    int error, i,j, index = 0;
+    uint16 cdir = tcb[0].cdir;
+    error = fmsGetNextDirEntry(&index, filename, &dirEntry, cdir);
+    if (error) {
+        printf("\a");
+        return 0;
+    }
+    for (i=0;i<8;i++){
+        filename[i] = dirEntry.name[i];
+        if (filename[i] == 0 || filename[i] == ' ') break;
+    }
+    if (dirEntry.extension[0] != ' '){
+        filename[i] = '.';
+        ++i;
+        for (j=0;j<3;j++){
+            filename[i+j] = dirEntry.extension[j];
+            if (filename[i+j] == 0 || filename[i+j] == ' ') break;
+        }
+        filename[i+j] = 0;
+    }
+    else{
+        filename[i] = 0;
+    }
+    return 1;
+    
+    
+}
 
 // ***********************************************************************
 // ***********************************************************************
@@ -92,7 +124,7 @@ extern int curTask;							// current task #
 int fmsCloseFile(int fileDescriptor)
 {
 	// ?? add code here
-	printf("\nfmsCloseFile Not Implemented");
+	//printf("\nfmsCloseFile Not Implemented");
     
     if (OFTable[fileDescriptor].name[0] == 0) return ERR63;
     
@@ -102,20 +134,6 @@ int fmsCloseFile(int fileDescriptor)
 
 	return 0;
 } // end fmsCloseFile
-
-// ***********************************************************************
-// ***********************************************************************
-// This function autcompletes the filename given with the first directory entry in the current directory
-void fmsAutcompleteFile(char* filename){
-    DirEntry dirEntry;
-    int error, index = 0;
-    uint16 cdir = tcb[0].cdir;
-    printf("%d",cdir);
-    error = fmsGetNextDirEntry(&index, filename, &dirEntry, cdir);
-    printf("%d %d",error,index);
-    printf("%s",dirEntry.name);
-    
-}
 
 
 
@@ -215,6 +233,10 @@ int fmsOpenFile(char* fileName, int rwMode)
     //if we're trying to write and it's read only
     if (dirEntry.attributes & READ_ONLY && rwMode != 0){
         return ERR83;
+    }
+    
+    if (dirEntry.attributes & DIRECTORY){
+        return ERR51;
     }
     /*Invalid File Name”, “File Not Defined”, “File Already open”, “Too Many Files Open”, “File Space Full”*/
     
