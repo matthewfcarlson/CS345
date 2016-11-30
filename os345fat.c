@@ -103,6 +103,20 @@ int fmsCloseFile(int fileDescriptor)
 	return 0;
 } // end fmsCloseFile
 
+// ***********************************************************************
+// ***********************************************************************
+// This function autcompletes the filename given with the first directory entry in the current directory
+void fmsAutcompleteFile(char* filename){
+    DirEntry dirEntry;
+    int error, index = 0;
+    uint16 cdir = tcb[0].cdir;
+    printf("%d",cdir);
+    error = fmsGetNextDirEntry(&index, filename, &dirEntry, cdir);
+    printf("%d %d",error,index);
+    printf("%s",dirEntry.name);
+    
+}
+
 
 
 // ***********************************************************************

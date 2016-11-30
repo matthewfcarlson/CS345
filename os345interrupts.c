@@ -200,7 +200,8 @@ static void insert_char(char in){
     
 }
 
-
+extern bool diskMounted;					// disk has been mounted
+extern void fmsAutcompleteFile(char* filename);
 // **********************************************************************
 // keyboard interrupt service routine
 //
@@ -226,6 +227,30 @@ static void keyboard_isr()
                     inBufIndx = 0;				// EOL, signal line ready
                     cursorIndex = 0;
                     semSignal(inBufferReady);	// SIGNAL(inBufferReady)
+                    break;
+                }
+                case '\t':
+                {
+                    if (diskMounted){
+                        //TODO: create autocomplete function
+                        char filename_buffer[30];
+                        int first_space = 0;
+                        for (i=inBufIndx;i>=0 && first_space == 0;i--){
+                            if (inBuffer[i] == ' ' && inBufIndx != i) first_space = i;
+                        }
+                        
+                        int j = 0;
+                        printf("AUTCOMPLETE :[");
+                        
+                        for (i=first_space+1; i <= inBufIndx; i++){
+                            filename_buffer[j] = inBuffer[i];
+                            j++;
+                        }
+                        filename_buffer[j] = 0;
+                        fmsAutcompleteFile(filename_buffer);
+                        printf("%s",filename_buffer);
+                        printf("]");
+                    }
                     break;
                 }
                 
@@ -306,7 +331,7 @@ static void keyboard_isr()
         {
             //we have a control character
             if (control_char == 2){
-                //printf("Control Character %i",inChar);
+                
                 switch (inChar){
                     case 65:
                         //printf("Up arrow");
