@@ -103,6 +103,57 @@ int fmsGetNextFreeFatEntry(uint16* index){
     return ERR65;
 }
 
+//zeros out the sector specified
+int fmsClearSector(uint16 sector_number){
+    char buffer[BYTES_PER_SECTOR];
+    if (sector_number < BEG_DATA_SECTOR) {
+        printf("\nTrying to erase system sectors");
+        return ERR69;
+    }
+    
+    for (int i=0;i<BYTES_PER_SECTOR;i++) buffer[i] = 0;
+    
+    int error = fmsWriteSector(&buffer, sector_number);
+    return error;
+}
+
+//returns how many valid entries are in this directory
+//dir = dir cluster
+int fmsValidEntries(int dir){
+    int validEntries = 0;
+    int currentSector = 0;
+    int error;
+    char buffer[BYTES_PER_SECTOR];
+    DirEntry dirEntry;
+    if (dir == 0)
+    {
+        //go through each entry in the root folder
+        for (currentSector = BEG_ROOT_SECTOR; currentSector < BEG_DATA_SECTOR; currentSector++){
+            
+        }
+    }
+    else
+    {
+        //parse through the directories
+        currentSector = C_2_S(dir);
+        while (currentSector != C_2_S(FAT_EOC) && currentSector != C_2_S(0)){
+            if ((error = fmsReadSector(buffer, currentSector))) return error;
+            
+            for (int i=0;i<ENTRIES_PER_SECTOR;i++){
+                memcpy(&dirEntry, &buffer[i * sizeof(DirEntry)], sizeof(DirEntry));
+                if (dirEntry.name[0] == 0) continue;
+                if (dirEntry.name[0] == 0xE5) continue;
+                if (dirEntry.attributes == LONGNAME) continue;
+                if (dirEntry.startCluster == dir) continue;
+                if (dirEntry.name[0] == '.') continue;
+                validEntries++;
+            }
+            currentSector = C_2_S(getFatEntry(S_2_C(currentSector), FAT1));
+        }
+    }
+    return validEntries;
+}
+
 
 
 // ***********************************************************************
@@ -335,14 +386,27 @@ int fmsDefineFile(char* fileName, int attribute)
     
     error = fmsGetNextEmptyDirEntry(&dirNum,CDIR,&dirSector,longFileName+1);
     if (error) {
-        printf("Unable to find empty entry %d in %d,%d",error,dirNum,dirSector);
-        return error;
+        uint16 nextCluster;
+        //figure out the next cluster
+        error = fmsGetNextFreeFatEntry(&nextCluster);
+        
+        //printf("Get a new cluster %d and q it",nextCluster);
+        if (error < 0) return error;
+        fmsClearSector(C_2_S(nextCluster));
+        
+        setFatEntry(S_2_C(dirSector), nextCluster, FAT1);
+        setFatEntry(S_2_C(dirSector), nextCluster, FAT2);
+        setFatEntry(nextCluster, FAT_EOC, FAT1);
+        setFatEntry(nextCluster, FAT_EOC, FAT2);
+        
+        dirSector = C_2_S(nextCluster);
     }
     
     //check if we're a directory
     if (attribute & DIRECTORY){
         uint16 dirCluster;
         error = fmsGetNextFreeFatEntry(&dirCluster);
+        fmsClearSector(C_2_S(dirCluster));
         
         if (error < 0) return error;
         //set as the end of the chaim
@@ -393,7 +457,7 @@ int fmsDefineFile(char* fileName, int attribute)
 
 // ***********************************************************************
 // ***********************************************************************
-// This function deletes the file fileName from the current director.
+// This function deletes the file fileName from the current directory.
 // The file name should be marked with an "E5" as the first character and the chained
 // clusters in FAT 1 reallocated (cleared to 0).
 // Return 0 for success; otherwise, return the error number.
@@ -407,8 +471,21 @@ int fmsDeleteFile(char* fileName)
     //fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
     error = fmsGetNextDirEntry(&dirNum,fileName, &entry, CDIR);
     if (error){
+        printf("Unable to find file!");
         return ERR61;
     }
+    
+    if (entry.name[0] == '.') return ERR69;
+    
+    if (entry.attributes & DIRECTORY){
+        //check if there are any valid entries
+        int validEntries = fmsValidEntries(entry.startCluster);
+        if (validEntries != 0){
+            printf("Tried to delete directory with contents: %d",validEntries);
+            return ERR69;
+        }
+    }
+    
     
     //set the file to deleted
     entry.name[0] = 0xE5;
@@ -767,7 +844,8 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
                     error = fmsGetNextFreeFatEntry(&fd->startCluster);
                     if (error < 0) return error;
                     fd->fileSize += nBytes;
-                    //set as the end of the chaim
+                    //set as the end of the chain
+                    fmsClearSector(C_2_S(fd->startCluster));
                     setFatEntry(fd->startCluster, FAT_EOC, FAT1);
                     setFatEntry(fd->startCluster, FAT_EOC, FAT2);
                 }
@@ -778,10 +856,11 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
                 nextCluster = getFatEntry(fd->currentCluster, FAT1);
                 if (nextCluster == FAT_EOC) {
                     //figure out the next cluster
-                    
                     error = fmsGetNextFreeFatEntry(&nextCluster);
-                    //printf("Get a new cluster %d and link it",nextCluster);
+                    
+                    //printf("Get a new cluster %d and q it",nextCluster);
                     if (error < 0) return error;
+                    fmsClearSector(C_2_S(nextCluster));
                     fd->fileSize += nBytes;
                     setFatEntry(fd->currentCluster, nextCluster, FAT1);
                     setFatEntry(fd->currentCluster, nextCluster, FAT2);

@@ -972,7 +972,7 @@ extern int P6_dir(int, char**);			// list current directory
 int P6_finalTest(int argc, char* argv[])
 {
 	int i, flags = 0;
-	int finalDebug = 1;
+	int finalDebug = 0;
 
 	if (!diskMounted)
 	{
@@ -1078,7 +1078,7 @@ int fmsTests(int test, bool debug)
 			// write a word to each file, rewind the files (seek to 0), read and print word
 			for (i=0; i<numWords; i++)
 			{
-				if (debug) printf("\n   fmsWriteFile(tFID[%d], \"%s\", %d)", i, text[i], strlen(text[i]));
+				if (debug) printf("\n   fmsWriteFile(tFID[%d], \"%s\", %lu)", i, text[i], strlen(text[i]));
 				try(fmsWriteFile(tFID[i],text[i],strlen(text[i])));
 			}
 			// seek to beginning of files
@@ -1215,14 +1215,17 @@ int fmsTests(int test, bool debug)
 			try(fmsChangeDir(buf2));
 			// try to delete directory
 			printf("\n  fmsDeleteFile(\"%s\")", buf);
-			if ((error = fmsDeleteFile(buf)) != ERR69)
-				FERROR("\nFailed fmsDeleteFile(\"%s\")",buf,error);
+            if ((error = fmsDeleteFile(buf)) != ERR69){
+                printf("\nFailed fmsDeleteFile(%s) with error %d",buf,error);
+                return 4;
+            }
 			printf(" Can Not Delete... Good!");
 			// go back into directory
 			printf("\n  fmsChangeDir(\"%s\")", buf);
 			try(fmsChangeDir(buf));
 			// delete all the files
 			printf("\n  Delete %d files...", numFiles);
+            
 			for (i=0; i<numFiles; i++)
 			{	sprintf(buf1, "file%d.txt", i);
 				if (debug) printf("\n  fmsDeleteFile(\"%s\")", buf1);
@@ -1694,7 +1697,7 @@ int fmsGetDirEntrySector(int dirCluster, int dirNum, int* sector){
     }
     for (i=0;i<loop;i++)
     {
-        printf("\nqStarting at sector %d",*sector);
+        //printf("\nGoing to sector %d",*sector);
         *sector = C_2_S(getFatEntry(S_2_C(*sector), FAT1));
     }
     return 0;
