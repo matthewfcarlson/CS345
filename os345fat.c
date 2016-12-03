@@ -94,7 +94,7 @@ extern int curTask;							// current task #
 int fmsGetNextFreeFatEntry(uint16* index){
     int i;
     unsigned short entry;
-    for (i=2;i<ENTRIES_PER_FAT;i++)
+    for (i=2;i<CLUSTERS_PER_DISK+2;i++)
     {
         entry = getFatEntry(i, FAT1);
         *index = i;
@@ -329,9 +329,9 @@ int fmsDefineFile(char* fileName, int attribute)
     int dirNum=0,dirSector=0, entriesNeeded=1;
     if (strlen(fileName) > 11){
         entriesNeeded = (int)(strlen(fileName)-11) / 13 + 2;
+        printf("  We need %d",entriesNeeded);
     }
     
-    printf("  We need %d",entriesNeeded);
     
     error = fmsGetNextEmptyDirEntry(&dirNum,CDIR,&dirSector,longFileName+1);
     if (error) {
@@ -585,6 +585,7 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
                 nextCluster = getFatEntry(fd->currentCluster, FAT1);
                 //printf("\nLoading new cluster %d",nextCluster);
                 if (nextCluster == FAT_EOC) return numBytesRead;
+                //problem with cluster 1767 (start 1757)
                 
             }
             if (fd->flags & BUFFER_ALTERED){ //if we've altered the buffer
@@ -664,14 +665,28 @@ int fmsSeekFile(int fileDescriptor, int index)
     fd->fileIndex = 0;
     fd->currentCluster = fd->startCluster;
     
-    while (index != fd->fileIndex){
+    int sectorDistance;
+    int distance;
+    uint16 nextCluster;
+    while (fd->fileIndex != index){
+        
         if (fd->currentCluster == 0) return ERR66;
-        int distance = (index - fd->fileIndex);
+        sectorDistance = (index - fd->fileIndex) / BYTES_PER_SECTOR;
+        distance = (index - fd->fileIndex) % BYTES_PER_SECTOR;
+        
+        //printf("\nSeeking FD#%d %s from %d to %d out of %d. %d sectors to go",fileDescriptor, fd->name, fd->fileIndex, index, fd->fileSize,sectorDistance);
         //we need to go there
-        if (distance >= BYTES_PER_SECTOR){
-            printf("\nGoing from cluster %d",fd->currentCluster);
-            fd->currentCluster = getFatEntry(fd->currentCluster, FAT1);
-            printf("to %d",fd->currentCluster);
+        if (sectorDistance > 1 || (sectorDistance ==1 && distance != 0))
+        {
+            nextCluster = getFatEntry(fd->currentCluster, FAT1);
+            if (nextCluster == FAT_EOC){
+                nextCluster = fd->currentCluster;
+            }
+            fd->currentCluster = nextCluster;
+            fd->fileIndex += BYTES_PER_SECTOR;
+        }
+        else if (distance == 0)
+        {
             fd->fileIndex += BYTES_PER_SECTOR;
         }
         else
@@ -680,10 +695,19 @@ int fmsSeekFile(int fileDescriptor, int index)
         }
         
     }
+    //printf("Found FD#%d %s from %d to %d out of %d. Now at %d",fileDescriptor, fd->name, fd->fileIndex, index, fd->fileSize,fd->currentCluster);
     
-    //load the sector into the buffer
-    error = fmsReadSector(fd->buffer, C_2_S(fd->currentCluster));
-    if (error) return error;
+    if (fd->currentCluster == FAT_EOC){
+        printf("We found the end of the file!");
+        return ERR66;
+        //we seeked to the end of the file
+    }
+    else{
+        //load the sector into the buffer
+        error = fmsReadSector(fd->buffer, C_2_S(fd->currentCluster));
+        if (error) return error;
+    }
+    
     
     
     return fd->fileIndex;
@@ -720,9 +744,6 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
     FDEntry* fd = &OFTable[fileDescriptor];
     if (fd->name[0] == 0) return ERR52;
     
-    //printf("\nWriting %d bytes to FD # %d %s: ",nBytes, fileDescriptor,fd->name);
-    for (int i=0;i<nBytes;i++) printf("%c",buffer[i]);
-    
     if (nBytes == 0) return ERR66;
     
     //check that we aren't in read only mode
@@ -757,8 +778,9 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
                 nextCluster = getFatEntry(fd->currentCluster, FAT1);
                 if (nextCluster == FAT_EOC) {
                     //figure out the next cluster
-                    //printf("Get a new cluster and link it");
+                    
                     error = fmsGetNextFreeFatEntry(&nextCluster);
+                    //printf("Get a new cluster %d and link it",nextCluster);
                     if (error < 0) return error;
                     fd->fileSize += nBytes;
                     setFatEntry(fd->currentCluster, nextCluster, FAT1);

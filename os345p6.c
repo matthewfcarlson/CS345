@@ -972,7 +972,7 @@ extern int P6_dir(int, char**);			// list current directory
 int P6_finalTest(int argc, char* argv[])
 {
 	int i, flags = 0;
-	int finalDebug = 0;
+	int finalDebug = 1;
 
 	if (!diskMounted)
 	{
