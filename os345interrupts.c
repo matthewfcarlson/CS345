@@ -262,6 +262,8 @@ static void keyboard_isr()
                             if (inBuffer[i] == 0) break;
                             j++;
                         }
+                        inBufIndx += strlen(filename_buffer) - autolength;
+                        cursorIndex += strlen(filename_buffer) - autolength;
                     }
                     break;
                 }

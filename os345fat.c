@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 #include <setjmp.h>
 #include <assert.h>
 #include "os345.h"
@@ -47,7 +48,11 @@ int fmsWriteFile(int, char*, int);
 extern int fmsGetDirEntry(char* fileName, DirEntry* dirEntry);
 extern int fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir);
 
+extern int fmsGetNextEmptyDirEntry(int *dirNum, int dir, int* dirSector, int entriesNeeded);
+extern int fmsUpdateDirEntry(int dirNum, int dir, DirEntry* entry);
 extern int fmsMount(char* fileName, void* ramDisk);
+extern int fmsGetDirEntrySector(int dir, int dirNum, int* sector);
+
 
 extern void setFatEntry(int FATindex, unsigned short FAT12ClusEntryVal, unsigned char* FAT);
 extern unsigned short getFatEntry(int FATindex, unsigned char* FATtable);
@@ -61,7 +66,6 @@ extern void fmsError(int);
 extern int fmsReadSector(void* buffer, int sectorNumber);
 extern int fmsWriteSector(void* buffer, int sectorNumber);
 
-extern unsigned short getFatEntry(int FATindex, unsigned char* FATtable);
 
 // ***********************************************************************
 // ***********************************************************************
@@ -81,6 +85,25 @@ unsigned int currOpenFiles = 0;
 extern bool diskMounted;					// disk has been mounted
 extern TCB tcb[];							// task control block
 extern int curTask;							// current task #
+
+
+// ***********************************************************************
+// ***********************************************************************
+// This function finds the first empty FAT entry in the table
+// returns the index of the fat table
+int fmsGetNextFreeFatEntry(uint16* index){
+    int i;
+    unsigned short entry;
+    for (i=2;i<ENTRIES_PER_FAT;i++)
+    {
+        entry = getFatEntry(i, FAT1);
+        *index = i;
+        if (entry == 0) return 0;
+    }
+    return ERR65;
+}
+
+
 
 // ***********************************************************************
 // ***********************************************************************
@@ -115,6 +138,46 @@ int fmsAutcompleteFile(char* filename){
     
 }
 
+void fmsUpdateEntryTime(DirEntry* entry){
+    //figure out the time and date
+    time_t a;
+    struct tm *b;
+    FATDate *d;
+    FATTime *t;
+    
+    // capture local time and date
+    time(&a);
+    b = localtime(&a);                  // get local time
+    
+    d = (FATDate*)&(entry->date);     // point to date w/in dir entry
+    d->year = b->tm_year + 1900 - 1980; // update year
+    d->month = b->tm_mon;               // update month
+    d->day = b->tm_mday;                // update day
+    
+    t = (FATTime*)&(entry->time);     // point to time w/in dir entry
+    t->hour = b->tm_hour;               // update hour
+    t->min = b->tm_min;                 // update minute
+    t->sec = b->tm_sec;                 // update second
+    
+    // convert back
+    struct tm xx, *x = &xx;
+    
+    x->tm_wday = 0;
+    x->tm_yday = 0;
+    x->tm_isdst = 0;
+    
+    d = (FATDate*)&(entry->date);     // point to date w/in dir entry
+    x->tm_year = d->year + 1980 - 1900; // update year
+    x->tm_mon = d->month;               // update month
+    x->tm_mday = d->day;                // update day
+    
+    t = (FATTime*)&(entry->time);     // point to time w/in dir entry
+    x->tm_hour = t->hour;               // update hour
+    x->tm_min = t->min;                 // update minute
+    x->tm_sec = t->sec;                 // update second
+}
+
+
 // ***********************************************************************
 // ***********************************************************************
 // This function closes the open file specified by fileDescriptor.
@@ -123,15 +186,66 @@ int fmsAutcompleteFile(char* filename){
 //
 int fmsCloseFile(int fileDescriptor)
 {
-	// ?? add code here
-	//printf("\nfmsCloseFile Not Implemented");
+	
+    FDEntry* fd = &OFTable[fileDescriptor];
+    char filename[13];
+    int i,j,error;
+    DirEntry entry;
     
-    if (OFTable[fileDescriptor].name[0] == 0) return ERR63;
+    //check if the FD is already closed
+    if (fd->name[0] == 0) return ERR63;
     
-    OFTable[fileDescriptor].name[0] = 0;
+    j=0;
+    for (i=0;i<8;i++)
+    {
+        if (fd->name[i] == ' ') continue;
+        filename[j++] = fd->name[i];
+    }
+    filename[j++] = '.';
+    for (i=0;i<3;i++)
+    {
+        if (fd->extension[i] == ' ') continue;
+        filename[j++] = fd->extension[i];
+    }
+    filename[j] = 0;
     
-    OFTable[fileDescriptor].startCluster = 0;
-
+    
+    //get the director entry
+    int dirnum = 0,dirSector;
+    error = fmsGetNextDirEntry(&dirnum,filename, &entry, CDIR);
+    if (error) return error;
+    dirnum--;
+    error = fmsGetDirEntrySector(CDIR, dirnum, &dirSector);
+    if (error) return error;
+    
+    //save the buffer if we need to
+    if (fd->flags & BUFFER_ALTERED && fd->currentCluster != 0){ //if we've altered the buffer
+        //write it back out
+        //printf("(Writing out sector %d)", fd->currentCluster);
+        if ((error = fmsWriteSector(fd->buffer, C_2_S(fd->currentCluster)))){
+            return error;
+        }
+        fd->flags |= FILE_ALTERED; //set the file altered flag
+        fd->flags &= ~BUFFER_ALTERED; //clear the altered flag
+    }
+    
+    //update time if the file has been altered
+    if (fd->flags & FILE_ALTERED)
+        fmsUpdateEntryTime(&entry);
+    
+    
+    
+    entry.startCluster = fd->startCluster;
+    entry.fileSize = fd->fileSize;
+    
+    error = fmsUpdateDirEntry(dirSector, dirnum, &entry);
+    if (error) return error;
+    
+    //close the entry
+    fd->name[0] = 0;
+    fd->startCluster = 0;
+    currOpenFiles--;
+    
 	return 0;
 } // end fmsCloseFile
 
@@ -155,10 +269,124 @@ int fmsCloseFile(int fileDescriptor)
 //
 int fmsDefineFile(char* fileName, int attribute)
 {
-	// ?? add code here
-	printf("\nfmsDefineFile Not Implemented");
+    int i,j,fileNameLength,error,longFileName =0;
+    DirEntry entry;
+    fileNameLength = (int)strlen(fileName);
     
-	return ERR72;
+    error = fmsGetDirEntry(fileName, &entry);
+    if (!error){
+        return ERR60;
+    }
+    entry.attributes = attribute;
+    entry.startCluster = 0;
+    entry.fileSize = 0;
+    
+    
+    
+    if (!isValidFileName(fileName)) return ERR50;
+    
+    
+    for (i=0;i<fileNameLength;i++){
+        if (fileName[i] >= 'a' && fileName[i] <= 'z'){
+            fileName[i] -=32;
+        }
+    }
+    
+    
+    //figure out the name
+    for (i=0,j=0;i<8;i++){
+        
+        if (fileName[j] == '.' || fileName[j] == 0){
+            entry.name[i] = ' ';
+        }
+        else
+            entry.name[i] = fileName[j++];
+        
+    }
+    
+    if (fileName[j] != 0 && fileName[j] != '.'){
+        //we have a long file name
+        printf("LONG NAME DETECTED");
+        longFileName = 1;
+        entry.name[i-2]='~';
+        while (fileName[j] != '.' && fileName[j] != 0) j++;
+    }
+    else if (fileName[j] == '.') {
+        j++;
+    }
+    
+    
+    for (i=0;i<3;i++){
+        if (fileName[j] == '.' || fileName[j] == 0){
+            entry.extension[i] = ' ';
+        }
+        else
+            entry.extension[i] = fileName[j++];
+        
+    }
+
+    //find the next entry
+    int dirNum=0,dirSector=0, entriesNeeded=1;
+    if (strlen(fileName) > 11){
+        entriesNeeded = (int)(strlen(fileName)-11) / 13 + 2;
+    }
+    
+    printf("  We need %d",entriesNeeded);
+    
+    error = fmsGetNextEmptyDirEntry(&dirNum,CDIR,&dirSector,longFileName+1);
+    if (error) {
+        printf("Unable to find empty entry %d in %d,%d",error,dirNum,dirSector);
+        return error;
+    }
+    
+    //check if we're a directory
+    if (attribute & DIRECTORY){
+        uint16 dirCluster;
+        error = fmsGetNextFreeFatEntry(&dirCluster);
+        
+        if (error < 0) return error;
+        //set as the end of the chaim
+        setFatEntry(dirCluster, FAT_EOC, FAT1);
+        setFatEntry(dirCluster, FAT_EOC, FAT2);
+        entry.startCluster = dirCluster;
+        
+        //setup directory
+        DirEntry currDirectory;
+        for (i=0;i<8;i++) currDirectory.name[i] = ' ';
+        for (i=0;i<3;i++) currDirectory.extension[i] = ' ';
+        currDirectory.name[0] = '.';
+        currDirectory.time = entry.time;
+        currDirectory.date = entry.date;
+        currDirectory.startCluster = dirCluster;
+        currDirectory.attributes = DIRECTORY;
+        
+        //make sure we can get back
+        DirEntry prevDirectory;
+        for (i=0;i<8;i++) prevDirectory.name[i] = ' ';
+        for (i=0;i<3;i++) prevDirectory.extension[i] = ' ';
+        prevDirectory.name[0] = '.';
+        prevDirectory.name[1] = '.';
+        prevDirectory.time = entry.time;
+        prevDirectory.date = entry.date;
+        prevDirectory.startCluster = CDIR;
+        prevDirectory.attributes = DIRECTORY;
+        
+        fmsUpdateDirEntry(C_2_S(dirCluster), 0, &currDirectory);
+        fmsUpdateDirEntry(C_2_S(dirCluster), 1, &prevDirectory);
+    }
+    
+    fmsUpdateEntryTime(&entry);
+    
+    error = fmsUpdateDirEntry(dirSector, dirNum, &entry);
+    if (error) return error;
+    
+    if (longFileName){
+        //update the required number of entries to support long names
+    }
+    
+    
+    
+	return 0;
 } // end fmsDefineFile
 
 
@@ -172,11 +400,39 @@ int fmsDefineFile(char* fileName, int attribute)
 //
 int fmsDeleteFile(char* fileName)
 {
-	// ?? add code here
-	printf("\nfmsDeleteFile Not Implemented");
-
-	return ERR61;
+    DirEntry entry;
+    int error;
+    int dirNum=0;
+    int dirSector;
+    //fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
+    error = fmsGetNextDirEntry(&dirNum,fileName, &entry, CDIR);
+    if (error){
+        return ERR61;
+    }
+    
+    //set the file to deleted
+    entry.name[0] = 0xE5;
+    
+    //Clear fat entries
+    int fatEntry = entry.startCluster;
+    int fatIndex = entry.startCluster;
+    while (fatEntry != FAT_EOC && fatEntry != 0){
+        fatEntry = getFatEntry(fatIndex, FAT1);
+        setFatEntry(fatIndex, 0, FAT1);
+        fatIndex = fatEntry;
+    }
+    
+    dirNum--;
+    error = fmsGetDirEntrySector(CDIR, dirNum, &dirSector);
+    if (error) return error;
+    error = fmsUpdateDirEntry(dirSector, dirNum, &entry);
+    if (error) return error;
+    
+    
+	return 0;
 } // end fmsDeleteFile
+
+
 
 
 
@@ -204,7 +460,6 @@ int fmsDeleteFile(char* fileName)
 int fmsOpenFile(char* fileName, int rwMode)
 {
     DirEntry dirEntry;
-    char mask[20];
     int index = 0;
     int error = 0;
     
@@ -221,18 +476,15 @@ int fmsOpenFile(char* fileName, int rwMode)
     if (currOpenFiles == NFILES) return ERR70;
     
     //Find directory entry
-    strcpy(mask, fileName);
     error = fmsGetDirEntry(fileName, &dirEntry);
     if (error){
         return ERR61;
     }
     
-    printf("Index: %x",index);
-    
     //Check permission
     //if we're trying to write and it's read only
     if (dirEntry.attributes & READ_ONLY && rwMode != 0){
-        return ERR83;
+        return ERR84;
     }
     
     if (dirEntry.attributes & DIRECTORY){
@@ -258,12 +510,9 @@ int fmsOpenFile(char* fileName, int rwMode)
     //set the attributes
     entry->startCluster = dirEntry.startCluster;
     entry->currentCluster = 0;
-    entry->fileSize = (rwMode == 1)?0:dirEntry.fileSize;
+    entry->fileSize = (rwMode == OPEN_WRITE)?0:dirEntry.fileSize;
     
     entry->pid = curTask;
-    //string copy
-    for (int i=0;i<8;i++) entry->name[i] = dirEntry.name[i];
-    for (int i=0;i<3;i++) entry->extension[i] = dirEntry.extension[i];
     
     //other attributes
     entry->attributes = dirEntry.attributes;
@@ -271,7 +520,16 @@ int fmsOpenFile(char* fileName, int rwMode)
     entry->directoryCluster = CDIR;
     entry->fileIndex = (rwMode!=2)?0:dirEntry.fileSize;
     
+    //string copy
+    for (int i=0;i<8;i++) entry->name[i] = dirEntry.name[i];
+    for (int i=0;i<3;i++) entry->extension[i] = dirEntry.extension[i];
     
+    //append mode
+    if (rwMode & OPEN_APPEND){
+        fmsSeekFile(open_slot, entry->fileSize);
+    }
+    
+    currOpenFiles++;
     return open_slot;
 } // end fmsOpenFile
 
@@ -289,11 +547,10 @@ int fmsOpenFile(char* fileName, int rwMode)
 //
 int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
 {
-    int bytesOutput = 0;
-    int bufferIndex;
     int error;
     int nextCluster;
-    int bytesLeft;
+    unsigned int bytesLeft,bufferIndex;
+    int numBytesRead = 0;
     /*Errors
      “File Not Open”
      “Invalid File Descriptor”
@@ -307,7 +564,8 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
     if (fd->name[0] == 0) return ERR52;
     
     //check that we aren't write or append
-    if (fd->mode == 1 || fd->mode == 2) return ERR85;
+    if (fd->mode == OPEN_WRITE || fd->mode == OPEN_APPEND) return ERR85;
+    
     
     //load the nBytes
     while (nBytes > 0){
@@ -315,7 +573,7 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
         nextCluster = fd->currentCluster;
         
         if (fd->fileSize == fd->fileIndex) //check if we reached the end of the file
-            return bytesOutput ? bytesOutput : ERR66; //if so return an EOF or the number of bytes we've output
+            return numBytesRead ? numBytesRead : ERR66; //if so return an EOF or the number of bytes we've output
         bufferIndex = fd->fileIndex % BYTES_PER_SECTOR; //figure out where we are in the sector
         if (bufferIndex == 0 && (fd->fileIndex ||!fd->currentCluster)){ //if we're at a sector boundary
             if (fd->currentCluster == 0){ //load the first cluster
@@ -323,9 +581,11 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
                 nextCluster = fd->startCluster;
                 fd->fileIndex = 0;
             }
-            if (fd->fileIndex != 0){ //otherwise we're loading the next cluster
+            else{ //otherwise we're loading the next cluster
                 nextCluster = getFatEntry(fd->currentCluster, FAT1);
-                if (nextCluster == FAT_EOC) return bytesOutput;
+                //printf("\nLoading new cluster %d",nextCluster);
+                if (nextCluster == FAT_EOC) return numBytesRead;
+                
             }
             if (fd->flags & BUFFER_ALTERED){ //if we've altered the buffer
                 //write it back out
@@ -344,21 +604,22 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
         
         bytesLeft = BYTES_PER_SECTOR - bufferIndex;
         if (bytesLeft > nBytes) bytesLeft = nBytes;
-        if (bytesLeft > (fd->fileSize - fd->fileIndex))
-            bytesLeft = fd->fileIndex - fd->fileIndex;
+        if (bytesLeft > (fd->fileSize - fd->fileIndex)){
+            bytesLeft = fd->fileSize - fd->fileIndex;
+        }
         
         //do the memory copy
         memcpy(buffer, &fd->buffer[bufferIndex], bytesLeft);
         
         fd->fileIndex += bytesLeft;
         buffer += bytesLeft;
-        nBytes -= bytesLeft;
-        bytesOutput += bytesLeft;
+        numBytesRead += bytesLeft;
         
+        nBytes -= bytesLeft;
     }
     
     
-	return bytesOutput;
+	return numBytesRead;
 } // end fmsReadFile
 
 
@@ -373,10 +634,59 @@ int fmsReadFile(int fileDescriptor, char* buffer, int nBytes)
 //
 int fmsSeekFile(int fileDescriptor, int index)
 {
-	// ?? add code here
-	printf("\nfmsSeekFile Not Implemented");
-
-	return ERR63;
+    int error;
+    /*Errors
+     “File Not Open”
+     “Invalid File Descriptor”
+     “End-of-File”
+     “Illegal Access”
+     Always reads from transaction buffer
+     Watch out for sector boundaries
+     Byte oriented (translates to cluster blocking)
+     */
+    FDEntry* fd = &OFTable[fileDescriptor];
+    if (fd->name[0] == 0) return ERR52;
+    
+    if (index > fd->fileSize) index = fd->fileSize;
+    if (index < 0) index = 0;
+    
+    if (fd->flags & BUFFER_ALTERED && fd->currentCluster != 0){ //if we've altered the buffer
+        //write it back out
+        //printf("(Writing out sector %d)", fd->currentCluster);
+        if ((error = fmsWriteSector(fd->buffer, C_2_S(fd->currentCluster)))){
+            return error;
+        }
+        fd->flags |= FILE_ALTERED; //set the file altered flag
+        fd->flags &= ~BUFFER_ALTERED; //clear the altered flag
+    }
+    
+    //start at the beginning
+    fd->fileIndex = 0;
+    fd->currentCluster = fd->startCluster;
+    
+    while (index != fd->fileIndex){
+        if (fd->currentCluster == 0) return ERR66;
+        int distance = (index - fd->fileIndex);
+        //we need to go there
+        if (distance >= BYTES_PER_SECTOR){
+            printf("\nGoing from cluster %d",fd->currentCluster);
+            fd->currentCluster = getFatEntry(fd->currentCluster, FAT1);
+            printf("to %d",fd->currentCluster);
+            fd->fileIndex += BYTES_PER_SECTOR;
+        }
+        else
+        {
+            fd->fileIndex += distance;
+        }
+        
+    }
+    
+    //load the sector into the buffer
+    error = fmsReadSector(fd->buffer, C_2_S(fd->currentCluster));
+    if (error) return error;
+    
+    
+    return fd->fileIndex;
 } // end fmsSeekFile
 
 
@@ -392,10 +702,104 @@ int fmsSeekFile(int fileDescriptor, int index)
 //
 int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
 {
-	// ?? add code here
-	printf("\nfmsWriteFile Not Implemented");
     
+    int bytesOutput = 0;
+    int bufferIndex;
+    int error;
+    uint16 nextCluster;
+    int bytesLeft;
+    /*Errors
+     “File Not Open”
+     “Invalid File Descriptor”
+     “End-of-File”
+     “Illegal Access”
+     Always reads from transaction buffer
+     Watch out for sector boundaries
+     Byte oriented (translates to cluster blocking)
+     */
+    FDEntry* fd = &OFTable[fileDescriptor];
+    if (fd->name[0] == 0) return ERR52;
     
-
-	return ERR63;
+    printf("\nWriting %d bytes to FD # %d %s: ",nBytes, fileDescriptor,fd->name);
+    for (int i=0;i<nBytes;i++) printf("%c",buffer[i]);
+    
+    if (nBytes == 0) return ERR66;
+    
+    //check that we aren't in read only mode
+    if (fd->mode == OPEN_READ) {
+        printf("\nFD is in read-only mode");
+        return ERR85;
+    }
+    
+    //load the nBytes
+    while (nBytes > 0){
+        //setup the next cluster
+        nextCluster = fd->currentCluster;
+        
+        bufferIndex = fd->fileIndex % BYTES_PER_SECTOR; //figure out where we are in the sector
+        if (bufferIndex == 0 && (fd->fileIndex ||!fd->currentCluster))
+        { //if we're at a sector boundary
+            
+            if (fd->currentCluster == 0){ //load the first cluster
+                if (fd->startCluster == 0){
+                    
+                    error = fmsGetNextFreeFatEntry(&fd->startCluster);
+                    if (error < 0) return error;
+                    fd->fileSize += nBytes;
+                    //set as the end of the chaim
+                    setFatEntry(fd->startCluster, FAT_EOC, FAT1);
+                    setFatEntry(fd->startCluster, FAT_EOC, FAT2);
+                }
+                nextCluster = fd->startCluster;
+                fd->fileIndex = 0;
+            }
+            if (fd->fileIndex != 0){ //otherwise we're loading the next cluster
+                nextCluster = getFatEntry(fd->currentCluster, FAT1);
+                if (nextCluster == FAT_EOC) {
+                    //figure out the next cluster
+                    //printf("Get a new cluster and link it");
+                    error = fmsGetNextFreeFatEntry(&nextCluster);
+                    if (error < 0) return error;
+                    fd->fileSize += nBytes;
+                    setFatEntry(fd->currentCluster, nextCluster, FAT1);
+                    setFatEntry(fd->currentCluster, nextCluster, FAT2);
+                    setFatEntry(nextCluster, FAT_EOC, FAT1);
+                    setFatEntry(nextCluster, FAT_EOC, FAT2);
+                    
+                }
+            }
+            if (fd->flags & BUFFER_ALTERED && fd->currentCluster != 0){ //if we've altered the buffer
+                //write it back out
+                //printf("(Writing out sector %d)", fd->currentCluster);
+                if ((error = fmsWriteSector(fd->buffer, C_2_S(fd->currentCluster)))){
+                    return error;
+                }
+                fd->flags |= FILE_ALTERED; //set the file altered flag
+                fd->flags &= ~BUFFER_ALTERED; //clear the altered flag
+            }
+            if ((error = fmsReadSector(fd->buffer, C_2_S(nextCluster)))){
+                return error;
+            }
+            //set our current cluster to the one we just read from
+            fd->currentCluster = nextCluster;
+        }
+        
+        bytesLeft = BYTES_PER_SECTOR - bufferIndex;
+        if (bytesLeft > nBytes) bytesLeft = nBytes;
+        
+        //do the memory copy
+        fd->flags = fd->flags | BUFFER_ALTERED;
+        memcpy(&fd->buffer[bufferIndex],buffer, bytesLeft);
+        
+        
+        fd->fileIndex += bytesLeft;
+        buffer += bytesLeft;
+        nBytes -= bytesLeft;
+        bytesOutput += bytesLeft;
+        
+        if (fd->fileIndex > fd->fileSize) fd->fileSize = fd->fileIndex;
+        
+    }
+    return bytesOutput;
+    
 } // end fmsWriteFile

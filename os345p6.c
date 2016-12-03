@@ -74,6 +74,10 @@ FMSERROR FMSErrors[NUM_ERRORS]   = {
 int sectorReads;
 int sectorWrites;
 
+char longFilename[155];
+int longFileNameLength = 0;
+int longFileNameDirNum = -1;
+
 
 // ***********************************************************************
 // project 6 functions and tasks
@@ -151,18 +155,22 @@ int P6_dir(int argc, char* argv[])		// list directory
 	}
 	if (argc < 2) strcpy(mask, "*.*");
 		else strcpy(mask, argv[1]);
+    
+    longFileNameLength = 0;
 
 	//dumpRAMDisk("Root Directory", 19*512, 19*512+256);
 	printf("\nName:ext                time      date    cluster  size");
 	while (1)
 	{
+        
 		error = fmsGetNextDirEntry(&index, mask, &dirEntry, CDIR);
 		if (error)
 		{
 			if (error != ERR67) fmsError(error);
 			break;
 		}
-		printDirectoryEntry(&dirEntry);
+        printDirectoryEntry(&dirEntry);
+        
 		SWAP;
 	}
 	//dumpRAMDisk("Root Directory", 19*512, 20*512);
@@ -414,15 +422,24 @@ int P6_copy(int argc, char* argv[])		 	// copy file
 		return 0;
 	}
 	// open source file
-	if ((FDs = fmsOpenFile(argv[1], 0)) < 0)
+	if ((FDs = fmsOpenFile(argv[1], OPEN_READ)) < 0)
 	{	fmsError(FDs);
+        printf(" File 1");
 		return 0;
 	}
 	// open destination file
-	if ((FDd = fmsOpenFile(argv[2], 1)) < 0)
-	{	fmsCloseFile(FDs);
-		fmsError(FDd);
-		return 0;
+	if ((FDd = fmsOpenFile(argv[2], OPEN_WRITE)) < 0)
+	{
+        if (FDd == ERR61){
+            fmsDefineFile(argv[2], 0);
+            FDd = fmsOpenFile(argv[2], OPEN_WRITE);
+        }
+        if (FDd < 0){
+            printf("\nFile 2:");
+            fmsError(FDd);
+            return 0;
+        }
+		
 	}
 	//printf("\n FDs = %d\n FDd = %d\n", FDs, FDd);
 
@@ -619,14 +636,14 @@ void printDirectoryEntry(DirEntry* dirent)
 	char p_string[64] = "              ------  00:00:00 03/01/2004";
    FATDate date;											// The Date bit field structure
    FATTime time;											// The Time bit field structure
-
-   strncpy(p_string, (char*)&(dirent->name), 8);	// Copies 8 bytes from the name
-	while (p_string[i] == ' ') i--;
-	p_string[i+1] = '.';									// Add extension
-	strncpy(&p_string[i+2], (char*)&(dirent->extension), 3);
-	while (p_string[i+4] == ' ') i--;
-	if (p_string[i+4] == '.') p_string[i+4] = ' ';
-
+    if (longFileNameLength == 0){
+        strncpy(p_string, (char*)&(dirent->name), 8);	// Copies 8 bytes from the name
+        while (p_string[i] == ' ') i--;
+        p_string[i+1] = '.';									// Add extension
+        strncpy(&p_string[i+2], (char*)&(dirent->extension), 3);
+        while (p_string[i+4] == ' ') i--;
+        if (p_string[i+4] == '.') p_string[i+4] = ' ';
+    }
    // Generate the attributes
    if(dirent->attributes & 0x01) p_string[14] = 'R';
    if(dirent->attributes & 0x02) p_string[15] = 'H';
@@ -646,7 +663,14 @@ void printDirectoryEntry(DirEntry* dirent)
 			   dirent->startCluster, dirent->fileSize);
 
    // p_string is now ready!
-	printf("\n%s", p_string);
+    if (longFileNameLength != 0){
+        longFilename[longFileNameLength] = 0;
+        printf("\n%s%s", longFilename, &p_string[13]);
+        longFileNameLength = 0;
+    }else{
+        printf("\n%s", p_string);
+    }
+	
 	return;
 } // end PrintDirectoryEntry
 
@@ -1651,12 +1675,115 @@ int fmsGetDirEntry(char* fileName, DirEntry* dirEntry)
 //    ERR61 = File Not Defined
 {
    int error, index = 0;
-	//if (isValidFileName(fileName) < 1) return ERR50;
+    //if (isValidFileName(fileName) < 1) return ERR50;
    error = fmsGetNextDirEntry(&index, fileName, dirEntry, CDIR);
 	return (error ? ((error == ERR67) ? ERR61 : error) : 0);
 } // end fmsGetDirEntry
 
 
+// ***************************************************************************************
+// ***************************************************************************************
+//Updates the entry
+int fmsGetDirEntrySector(int dirCluster, int dirNum, int* sector){
+    int i;
+    int loop = dirNum / ENTRIES_PER_SECTOR;
+    *sector = C_2_S(dirCluster);
+    if (dirCluster == 0) {
+        *sector = (dirNum / ENTRIES_PER_SECTOR) + BEG_ROOT_SECTOR;
+        return 0;
+    }
+    for (i=0;i<loop;i++)
+    {
+        printf("\nqStarting at sector %d",*sector);
+        *sector = C_2_S(getFatEntry(S_2_C(*sector), FAT1));
+    }
+    return 0;
+}
+
+
+// ***************************************************************************************
+// ***************************************************************************************
+//Updates the entry
+int fmsUpdateDirEntry(int dirSector, int dirNum, DirEntry* entry){
+    char buffer[BYTES_PER_SECTOR];
+    int dirIndex, error;
+    
+    if ((error = fmsReadSector(buffer, dirSector))) return error;
+    dirIndex = dirNum % ENTRIES_PER_SECTOR;
+    
+    memcpy(&buffer[dirIndex * sizeof(DirEntry)], entry, sizeof(DirEntry));
+    if ((error = fmsWriteSector(buffer, dirSector))) return error;
+    
+
+    return 0;
+}
+
+
+// ***************************************************************************************
+// ***************************************************************************************
+// This function returns the next directory entry of the current directory that is empty.
+//	The dirNum parameter is set to 0 for the first entry and is subsequently
+//    updated for each additional call.
+//    ERR54 = Invalid FAT Chain
+//    ERR67 = End of Directory
+
+int fmsGetNextEmptyDirEntry(int *dirNum, int dir, int* dirSector, int entriesNeeded)
+{
+    char buffer[BYTES_PER_SECTOR];
+    int dirIndex, error;
+    int loop = *dirNum / ENTRIES_PER_SECTOR;
+    int dirCluster = dir;
+    int emptyFound = 0;
+    DirEntry dirEntry;
+    
+    while(1)
+    {	// load directory sector
+        if (dir)
+        {	// sub directory
+            while(loop--)
+            {
+                dirCluster = getFatEntry(dirCluster, FAT1);
+                if (dirCluster == FAT_EOC) return ERR67;
+                if (dirCluster == FAT_BAD) return ERR54;
+                if (dirCluster < 2) return ERR54;
+            }
+            *dirSector = C_2_S(dirCluster);
+        }
+        else
+        {	// root directory
+            *dirSector = (*dirNum / ENTRIES_PER_SECTOR) + BEG_ROOT_SECTOR;
+            if (*dirSector >= BEG_DATA_SECTOR) return ERR67;
+        }
+        
+        // read sector into directory buffer
+        if ((error = fmsReadSector(buffer, *dirSector))) return error;
+        
+        // find next matching directory entry
+        while(1)
+        {	// read directory entry
+            dirIndex = *dirNum % ENTRIES_PER_SECTOR;
+            memcpy(&dirEntry, &buffer[dirIndex * sizeof(DirEntry)], sizeof(DirEntry));
+            //printf("\nChecking %s at sector %d, dirNum %d",dirEntry.name,*dirSector,*dirNum);
+            if (dirEntry.name[0] == 0) emptyFound++;	// EOD
+            else if (dirEntry.name[0] == 0xe5) emptyFound++;    		// Deleted entry, go on...
+            else emptyFound = 0;
+            
+            
+            if (emptyFound == entriesNeeded) return 0;
+            
+            (*dirNum)++; 		// prepare for next read
+            
+            // break if sector boundary
+            if ((*dirNum % ENTRIES_PER_SECTOR) == 0) break;
+        }
+        // next directory sector/cluster
+        loop = 1;
+    }
+    return 0;
+}
+
+
+int entriesFoundSinceLong = 0;
 
 // ***************************************************************************************
 // ***************************************************************************************
@@ -1684,7 +1811,10 @@ int fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
 	int dirIndex, dirSector, error;
 	int loop = *dirNum / ENTRIES_PER_SECTOR;
 	int dirCluster = dir;
-
+    
+    if (dirNum == 0 || dir == 0){
+        longFileNameLength = 0;
+    }
 	while(1)
 	{	// load directory sector
 		if (dir)
@@ -1715,9 +1845,47 @@ int fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
             //printf("\nChecking %s at sector %d, dirNum %d",dirEntry->name,dirSector,*dirNum);
 			if (dirEntry->name[0] == 0) return ERR67;	// EOD
 			(*dirNum)++;                        		// prepare for next read
-			if (dirEntry->name[0] == 0xe5);     		// Deleted entry, go on...
-			else if (dirEntry->attributes == LONGNAME);
-			else if (fmsMask(mask, dirEntry->name, dirEntry->extension)) return 0;   // return if valid
+            if (dirEntry->name[0] == 0xe5);     		// Deleted entry, go on...
+            else if (dirEntry->attributes == LONGNAME)
+            {
+                LongDirEntry entry;
+                int longFilenameIndex  = 0;
+                memcpy(&entry, &buffer[dirIndex * sizeof(DirEntry)], sizeof(LongDirEntry));
+                longFilenameIndex = 13 * ((entry.order & ~0x40)-1);
+                for (int i=0;i<13;i++){
+                    longFilename[i+longFilenameIndex] = 0xFF;
+                }
+                for (int i=0;i<10;i++){
+                    if (entry.name1[i] == 0 || entry.name1[i] == 0xFF) continue;
+                    longFilename[longFilenameIndex++] = entry.name1[i];
+                }
+                for (int i=0;i<12;i+=2){
+                    if (entry.name2[i] == 0 || entry.name2[i] == 0xFF) continue;
+                    longFilename[longFilenameIndex++] = entry.name2[i];
+                }
+                for (int i=0;i<4;i++){
+                    if (entry.name3[i] == 0 || entry.name3[i] == 0xFF) continue;
+                    longFilename[longFilenameIndex++] = entry.name3[i];
+                }
+                if (longFileNameLength < longFilenameIndex) longFileNameLength = longFilenameIndex;
+                entriesFoundSinceLong = 0;
+                
+            }
+            else
+            {
+                
+                entriesFoundSinceLong++;
+                if (entriesFoundSinceLong == 1) longFileNameDirNum = *dirNum;
+                if (entriesFoundSinceLong > 1) longFileNameLength = 0;
+                //TODO: check for long filenames
+                if (strlen(mask) > 11){
+                    //TODO check
+                }
+                else if (fmsMask(mask, dirEntry->name, dirEntry->extension)) {
+                    return 0;
+                }   // return if valid
+            }
+                               		// prepare for next read
             
 			// break if sector boundary
 			if ((*dirNum % ENTRIES_PER_SECTOR) == 0) break;

@@ -15,6 +15,8 @@ typedef unsigned int uint32;
 #define BEG_ROOT_SECTOR    19
 #define BEG_DATA_SECTOR    33
 #define CLUSTERS_PER_DISK  SECTORS_PER_DISK-BEG_DATA_SECTOR
+#define ENTRIES_PER_FAT    NUM_FAT_SECTORS*BYTES_PER_SECTOR*8/12
+
 
 #define BUFSIZE      512
 #define NFILES       32          	// # of valid open files
@@ -143,6 +145,20 @@ typedef struct
 	uint16	startCluster;		// Pointer to the first cluster of the file.
 	uint32	fileSize;	   		// File size in bytes
 } DirEntry;
+#pragma pack(pop)				// End of strict alignment
+
+#pragma pack(push,1)			// BYTE align in memory (no padding)
+typedef struct
+{
+    uint8	order;	      	// File name
+    uint8	name1[10];      // Characters 1-5
+    uint8	attributes;			// Holds the attributes code
+    uint8	type;          // Reserved
+    uint8   chksum;        // Time of last write
+    uint8   name2[12];	    // Characters 6-11 of the long-name sub-component in this direntry.
+    uint16	startCluster;		// Pointer to the first cluster of the file.
+    uint8	name3[4];	   	// Characters 12-13 of the long-name sub-component in this direntry
+} LongDirEntry;
 #pragma pack(pop)				// End of strict alignment
 
 typedef struct
