@@ -720,7 +720,7 @@ int fmsWriteFile(int fileDescriptor, char* buffer, int nBytes)
     FDEntry* fd = &OFTable[fileDescriptor];
     if (fd->name[0] == 0) return ERR52;
     
-    printf("\nWriting %d bytes to FD # %d %s: ",nBytes, fileDescriptor,fd->name);
+    //printf("\nWriting %d bytes to FD # %d %s: ",nBytes, fileDescriptor,fd->name);
     for (int i=0;i<nBytes;i++) printf("%c",buffer[i]);
     
     if (nBytes == 0) return ERR66;
