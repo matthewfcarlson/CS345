@@ -496,6 +496,8 @@ Command** P1_init()
 	commands[i++] = newCommand("copy", "cf", P6_copy, "Copy file");
 	commands[i++] = newCommand("define", "df", P6_define, "Define file");
 	commands[i++] = newCommand("delete", "dl", P6_del, "Delete file");
+    commands[i++] = newCommand("undel", "ud", P6_undelete, "Undelete file");
+    commands[i++] = newCommand("rename", "rn", P6_rename, "Rename file");
 	commands[i++] = newCommand("ls", "dir", P6_dir, "List current directory");
 	commands[i++] = newCommand("mount", "md", P6_mount, "Mount disk");
 	commands[i++] = newCommand("mkdir", "mk", P6_mkdir, "Create directory");

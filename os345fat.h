@@ -190,6 +190,8 @@ int fmsOpenFile(char*, int);
 int fmsReadFile(int, char*, int);
 int fmsSeekFile(int, int);
 int fmsWriteFile(int, char*, int);
+int fmsUndeleteFile(char*);
+int fmsRenameFile(char*,char*);
 
 int fmsLoadFile(char*, void*, int);
 int fmsMount(char*, void*);

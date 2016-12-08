@@ -544,6 +544,54 @@ int P6_mkdir(int argc, char* argv[])				// create directory file
 } // P6_mkdir
 
 
+// ***********************************************************************
+// ***********************************************************************
+// undel <fileName>
+int P6_undelete(int argc, char* argv[])				// create directory file
+{
+    int error;
+    
+    if (!diskMounted)
+    {
+        fmsError(ERR72);
+        return 0;
+    }
+    if (argc < 2)
+    {
+        printf("\n  UD <fileName>");
+        return 0;
+    }
+    if ((error = fmsUndeleteFile(argv[1])) < 0)
+    {
+        fmsError(error);
+    }
+    return 0;
+} // P6_undelete
+
+
+// ***********************************************************************
+// ***********************************************************************
+// undel <fileName>
+int P6_rename(int argc, char* argv[])				// create directory file
+{
+    int error;
+    
+    if (!diskMounted)
+    {
+        fmsError(ERR72);
+        return 0;
+    }
+    if (argc < 3)
+    {
+        printf("\n  rn <fileName> <filename2>");
+        return 0;
+    }
+    if ((error = fmsRenameFile(argv[1],argv[2])) < 0)
+    {
+        fmsError(error);
+    }
+    return 0;
+} // P6_undelete
 
 // ***********************************************************************
 // ***********************************************************************
@@ -1785,6 +1833,92 @@ int fmsGetNextEmptyDirEntry(int *dirNum, int dir, int* dirSector, int entriesNee
     return 0;
 }
 
+// ***************************************************************************************
+// ***************************************************************************************
+int fmsGetDeletedDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
+//	Called by dir or ls command.
+// This function returns the next directory entry of the current directory.
+//	The dirNum parameter is set to 0 for the first entry and is subsequently
+//    updated for each additional call.
+//	The next directory entry is returned in the 32 byte directory structure dirEntry:
+//	The parameter mask is a selection string.  If null, return next directory entry.
+//    Otherwise, use the mask string to select the next directory entry.
+//    A '*' is a wild card for any length string.
+//    A '?' is a wild card for any single character.
+//    Any other character must match exactly.
+// NOTE:
+//		*.*		all files
+//		*			all files w/o extension
+//		a*.txt	all files beginning with the character 'a' and with a .txt extension
+//	Return 0 for success, otherwise, return the error number.
+//
+//    ERR54 = Invalid FAT Chain
+//    ERR67 = End of Directory
+{
+    char buffer[BYTES_PER_SECTOR];
+    int dirIndex, dirSector, error;
+    int loop = *dirNum / ENTRIES_PER_SECTOR;
+    int dirCluster = dir;
+    
+    if (dirNum == 0 || dir == 0){
+        longFileNameLength = 0;
+    }
+    while(1)
+    {	// load directory sector
+        if (dir)
+        {	// sub directory
+            while(loop--)
+            {
+                dirCluster = getFatEntry(dirCluster, FAT1);
+                if (dirCluster == FAT_EOC) return ERR67;
+                if (dirCluster == FAT_BAD) return ERR54;
+                if (dirCluster < 2) return ERR54;
+            }
+            dirSector = C_2_S(dirCluster);
+        }
+        else
+        {	// root directory
+            dirSector = (*dirNum / ENTRIES_PER_SECTOR) + BEG_ROOT_SECTOR;
+            if (dirSector >= BEG_DATA_SECTOR) return ERR67;
+        }
+        
+        // read sector into directory buffer
+        if ((error = fmsReadSector(buffer, dirSector))) return error;
+        
+        // find next matching directory entry
+        while(1)
+        {	// read directory entry
+            dirIndex = *dirNum % ENTRIES_PER_SECTOR;
+            memcpy(dirEntry, &buffer[dirIndex * sizeof(DirEntry)], sizeof(DirEntry));
+            //printf("\nChecking %s at sector %d, dirNum %d",dirEntry->name,dirSector,*dirNum);
+            if (dirEntry->name[0] == 0) return ERR67;	// EOD
+            (*dirNum)++;                        		// prepare for next read
+            if (dirEntry->name[0] == 0xe5);     		// Deleted entry, go on...
+            else if (dirEntry->attributes == LONGNAME)
+            {
+
+                
+            }
+            else
+            {
+                //TODO: check for long filenames
+                if (strlen(mask) > 11){
+                    //TODO check
+                }
+                else if (fmsMask(mask, dirEntry->name, dirEntry->extension)) {
+                    return 0;
+                }   // return if valid
+            }
+            // prepare for next read
+            
+            // break if sector boundary
+            if ((*dirNum % ENTRIES_PER_SECTOR) == 0) break;
+        }
+        // next directory sector/cluster
+        loop = 1;
+    }
+    return 0;
+} // end fmsGetNextDirEntry
 
 int entriesFoundSinceLong = 0;
 

@@ -454,6 +454,111 @@ int fmsDefineFile(char* fileName, int attribute)
 } // end fmsDefineFile
 
 
+// ***********************************************************************
+// ***********************************************************************
+// This function undeletes the file fileName from the current directory.
+// The file name should be marked with an "E5" as the first character and the chained
+// clusters in FAT 1 reallocated (cleared to 0).
+// Return 0 for success; otherwise, return the error number.
+//
+int fmsUndeleteFile(char* fileName)
+{
+    DirEntry entry;
+    int error;
+    int dirNum=0;
+    int dirSector;
+    int i,j;
+    
+    //get the directory entry
+    
+    
+   
+    //restore the fat file chain
+    int fatEntry = entry.startCluster;
+    int fatIndex = entry.startCluster;
+    while (fatEntry != FAT_EOC && fatEntry != 0){
+        fatEntry = getFatEntry(fatIndex, FAT2);
+        setFatEntry(fatIndex, 0, FAT1);
+        fatIndex = fatEntry;
+    }
+    
+    dirNum--;
+    error = fmsGetDirEntrySector(CDIR, dirNum, &dirSector);
+    if (error) return error;
+    error = fmsUpdateDirEntry(dirSector, dirNum, &entry);
+    if (error) return error;
+
+    return 0;
+}
+
+// ***********************************************************************
+// ***********************************************************************
+// This function undeletes the file fileName from the current directory.
+// The file name should be marked with an "E5" as the first character and the chained
+// clusters in FAT 1 reallocated (cleared to 0).
+// Return 0 for success; otherwise, return the error number.
+//
+int fmsRenameFile(char* fileName,char* fileName2)
+{
+    
+    DirEntry entry;
+    int error;
+    int dirNum=0;
+    int dirSector;
+    int i,j;
+    
+    //fmsGetNextDirEntry(int *dirNum, char* mask, DirEntry* dirEntry, int dir)
+    error = fmsGetNextDirEntry(&dirNum,fileName, &entry, CDIR);
+    if (error){
+        printf("Unable to find file!");
+        return ERR61;
+    }
+    
+    if (entry.name[0] == '.') return ERR69;
+    
+    if (entry.attributes & DIRECTORY){
+        //check if there are any valid entries
+        int validEntries = fmsValidEntries(entry.startCluster);
+        if (validEntries != 0){
+            printf("Tried to delete directory with contents: %d",validEntries);
+            return ERR69;
+        }
+    }
+    
+    //write the new filename
+    for (i=0,j=0; i<8; i++){
+        if (fileName2[j] == '.' || fileName2[j] == 0){
+            entry.name[i] = ' ';
+            continue;
+        }
+        if (fileName2[j] >='a' || fileName2[j] <='z') fileName2[j] -= 32;
+        entry.name[i] = fileName2[j++];
+    }
+    
+    //make sure we don't write the period
+    if (fileName2[j] == '.' ) j++;
+    
+    //write the new extension
+    for (i=0; i<3; i++){
+        if (fileName2[j] == 0) {
+            entry.extension[i] = ' ';
+        }
+        else{
+            if (fileName2[j] >='a' || fileName2[j] <='z') fileName2[j] -= 32;
+            entry.extension[i] = fileName2[j++];
+        }
+        
+    }
+    
+    dirNum--;
+    error = fmsGetDirEntrySector(CDIR, dirNum, &dirSector);
+    if (error) return error;
+    error = fmsUpdateDirEntry(dirSector, dirNum, &entry);
+    if (error) return error;
+    
+    
+    return 0;
+}
 
 // ***********************************************************************
 // ***********************************************************************

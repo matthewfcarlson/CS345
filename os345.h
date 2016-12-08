@@ -188,7 +188,7 @@ TaskID removeFromBlockedQueue(Semaphore* s,TID tid, int prority);
 // ***********************************************************************
 // Command prototypes
 
-#define NUM_COMMANDS 54
+#define NUM_COMMANDS 56
 typedef struct								// command struct
 {
 	char* command;
@@ -250,6 +250,8 @@ int P6_fileSlots(int, char**);
 int P6_copy(int, char**);
 int P6_define(int, char**);
 int P6_del(int, char**);
+int P6_undelete(int, char*[]);
+int P6_rename(int, char*[]);
 int P6_mkdir(int, char**);
 int P6_unmount(int, char**);
 int P6_chkdsk(int, char**);
